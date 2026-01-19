@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Highway Cafe POS
+Comment=Point of Sale System
+Exec=bash -c "cd /opt/highway-cafe-pos && npm run electron"
+Icon=/opt/highway-cafe-pos/client/public/pwa-192x192.png
+Terminal=false
+StartupNotify=true
+Categories=Office;Finance;

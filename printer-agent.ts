@@ -1,0 +1,282 @@
+import express from 'express';
+import cors from 'cors';
+import { writeFile } from 'fs/promises';
+import { constants, accessSync } from 'fs';
+// @ts-ignore
+import { ArabicShaper } from 'arabic-persian-reshaper';
+import iconv from 'iconv-lite';
+import { CP864_MAPPING } from './server/cp864-map';
+
+// ESC/POS Commands
+const CMD = {
+    INIT: Buffer.from([0x1B, 0x40]),
+    KANJI_OFF: Buffer.from([0x1C, 0x2E]),
+    CODEPAGE_ARABIC: Buffer.from([0x1B, 0x74, 22]),
+    ALIGN_CENTER: Buffer.from([0x1B, 0x61, 0x01]),
+    ALIGN_LEFT: Buffer.from([0x1B, 0x61, 0x00]),
+    ALIGN_RIGHT: Buffer.from([0x1B, 0x61, 0x02]),
+    BOLD_ON: Buffer.from([0x1B, 0x45, 0x01]),
+    BOLD_OFF: Buffer.from([0x1B, 0x45, 0x00]),
+    SIZE_NORMAL: Buffer.from([0x1D, 0x21, 0x00]),
+    SIZE_DOUBLE: Buffer.from([0x1D, 0x21, 0x11]),
+    CUT: Buffer.from([0x1D, 0x56, 0x41, 0x03]),
+    FEED: Buffer.from([0x0A]),
+};
+
+class LocalReceiptPrinter {
+    private devicePath: string;
+
+    constructor() {
+        const possiblePaths = ['/dev/usb/lp1', '/dev/usb/lp0', '/dev/lp1', '/dev/lp0'];
+        this.devicePath = '';
+
+        for (const path of possiblePaths) {
+            try {
+                accessSync(path, constants.F_OK);
+                this.devicePath = path;
+                console.log(`[Printer] Device found at: ${this.devicePath}`);
+                break;
+            } catch (err) {
+                // Silent fail for next path
+            }
+        }
+
+        if (!this.devicePath) {
+            console.warn('[Printer] No writable printer device found. USB printing will fail.');
+        }
+    }
+
+    private formatCurrency(amount: number | string | null | undefined): string {
+        const num = Number(amount) || 0;
+        return `$${num.toFixed(2)}`;
+    }
+
+    private text(str: string): Buffer {
+        if (!str) return Buffer.from('');
+
+        const hasArabic = /[\u0600-\u06FF]/.test(str);
+
+        if (hasArabic) {
+            try {
+                const reshaped = ArabicShaper.convertArabic(str);
+                const reversed = reshaped.split('').reverse().join('');
+
+                const buffer = Buffer.alloc(reversed.length);
+                for (let i = 0; i < reversed.length; i++) {
+                    const charCode = reversed.charCodeAt(i);
+                    if (CP864_MAPPING[charCode]) {
+                        buffer[i] = CP864_MAPPING[charCode];
+                    } else {
+                        if (charCode <= 0x7F) {
+                            buffer[i] = charCode;
+                        } else {
+                            const encoded = iconv.encode(reversed[i], 'cp864');
+                            buffer[i] = encoded.length > 0 ? encoded[0] : 0x3F;
+                        }
+                    }
+                }
+                return buffer;
+            } catch (e) {
+                console.error('Arabic shaping error:', e);
+                return Buffer.from(str, 'utf-8');
+            }
+        }
+
+        return iconv.encode(str, 'cp437');
+    }
+
+    async write(buffer: Buffer): Promise<void> {
+        if (!this.devicePath) throw new Error('No printer device available');
+        await writeFile(this.devicePath, buffer);
+    }
+
+    private convertToLbp(usdAmount: number, rate: number = 89500): string {
+        const lbp = Math.ceil((usdAmount * rate) / 5000) * 5000;
+        return lbp.toLocaleString();
+    }
+
+    async printReceipt(receiptData: any): Promise<void> {
+        const timestamp = new Date(receiptData.timestamp || Date.now());
+        const buffers: Buffer[] = [];
+        const RATE = receiptData.exchangeRate || 89500;
+
+        buffers.push(CMD.INIT);
+        buffers.push(CMD.KANJI_OFF);
+        buffers.push(CMD.CODEPAGE_ARABIC);
+
+        buffers.push(CMD.ALIGN_CENTER);
+        buffers.push(CMD.BOLD_ON);
+        buffers.push(CMD.SIZE_DOUBLE);
+        buffers.push(this.text(receiptData.storeName || 'Highway Cafe'));
+        buffers.push(CMD.FEED);
+
+        buffers.push(CMD.SIZE_NORMAL);
+        buffers.push(CMD.BOLD_OFF);
+
+        if (receiptData.address) {
+            buffers.push(this.text(receiptData.address));
+            buffers.push(CMD.FEED);
+        }
+        if (receiptData.phone) {
+            buffers.push(this.text(receiptData.phone));
+            buffers.push(CMD.FEED);
+        }
+
+        buffers.push(this.text('------------------------------------------------'));
+        buffers.push(CMD.FEED);
+
+        buffers.push(CMD.ALIGN_LEFT);
+        buffers.push(this.text(`Order #: ${receiptData.orderId}`));
+        buffers.push(CMD.FEED);
+        buffers.push(this.text(`Date: ${timestamp.toLocaleString()}`));
+        buffers.push(CMD.FEED);
+
+        buffers.push(this.text('------------------------------------------------'));
+        buffers.push(CMD.FEED);
+
+        // Header
+        buffers.push(CMD.BOLD_ON);
+        buffers.push(this.text('Item Details'));
+        buffers.push(CMD.BOLD_OFF);
+        buffers.push(CMD.FEED);
+        buffers.push(this.text('------------------------------------------------'));
+        buffers.push(CMD.FEED);
+
+        if (Array.isArray(receiptData.items)) {
+            receiptData.items.forEach((item: any) => {
+                const nameStr = item.name || 'Unknown';
+                const qty = item.quantity || 0;
+                const totalUsd = item.total || 0;
+                const totalLbp = this.convertToLbp(totalUsd, RATE);
+
+                const unitUsd = qty > 0 ? totalUsd / qty : 0;
+                const unitLbp = this.convertToLbp(unitUsd, RATE);
+
+                // Line 1: Item Name - Bold
+                buffers.push(CMD.BOLD_ON);
+                buffers.push(this.text(nameStr));
+                buffers.push(CMD.BOLD_OFF);
+                buffers.push(CMD.FEED);
+
+                // Line 2: Details
+                // Format: " 2 @ $5.00/450,000      $10.00/900,000"
+                const UNIT_STR = `$${unitUsd.toFixed(2)}/${unitLbp}`;
+                const TOTAL_STR = `$${totalUsd.toFixed(2)}/${totalLbp}`;
+
+                const leftPart = ` ${qty} @ ${UNIT_STR}`;
+                const rightPart = TOTAL_STR;
+
+                // Width 48
+                const padding = 48 - leftPart.length - rightPart.length;
+                const spaces = padding > 0 ? ' '.repeat(padding) : ' ';
+
+                buffers.push(this.text(leftPart + spaces + rightPart));
+                buffers.push(CMD.FEED);
+                buffers.push(CMD.FEED); // Spacer
+            });
+        }
+
+        buffers.push(this.text('------------------------------------------------'));
+        buffers.push(CMD.FEED);
+        buffers.push(CMD.ALIGN_RIGHT);
+
+        const subtotalUsd = receiptData.subtotal || 0;
+        const subtotalLbp = this.convertToLbp(subtotalUsd, RATE);
+
+        buffers.push(this.text(`Subtotal: $${subtotalUsd.toFixed(2)}`));
+        buffers.push(CMD.FEED);
+        buffers.push(this.text(`${subtotalLbp} LBP`));
+        buffers.push(CMD.FEED);
+
+        if (receiptData.tax) {
+            buffers.push(this.text(`Tax: $${Number(receiptData.tax).toFixed(2)}`));
+            buffers.push(CMD.FEED);
+        }
+
+        buffers.push(CMD.FEED);
+        buffers.push(CMD.BOLD_ON);
+        buffers.push(CMD.SIZE_DOUBLE);
+
+        const totalUsd = receiptData.total || 0;
+        const totalLbp = this.convertToLbp(totalUsd, RATE);
+
+        buffers.push(this.text(`TOTAL: $${totalUsd.toFixed(2)}`));
+        buffers.push(CMD.FEED);
+        buffers.push(this.text(`${totalLbp} LBP`));
+
+        buffers.push(CMD.SIZE_NORMAL);
+        buffers.push(CMD.BOLD_OFF);
+        buffers.push(CMD.FEED);
+
+        buffers.push(this.text('------------------------------------------------'));
+        buffers.push(CMD.FEED);
+
+        const payMethod = (receiptData.paymentMethod || 'CASH').toUpperCase();
+        buffers.push(this.text(`Payment: ${payMethod}`));
+        buffers.push(CMD.FEED);
+
+        if (receiptData.cashReceived) {
+            buffers.push(this.text(`Cash: $${Number(receiptData.cashReceived).toFixed(2)}`));
+            buffers.push(CMD.FEED);
+            buffers.push(this.text(`Change: $${Number(receiptData.change || 0).toFixed(2)}`));
+            buffers.push(CMD.FEED);
+        }
+
+        buffers.push(CMD.ALIGN_CENTER);
+        buffers.push(CMD.FEED);
+        if (receiptData.footerText) {
+            buffers.push(this.text(receiptData.footerText));
+            buffers.push(CMD.FEED);
+        } else {
+            buffers.push(this.text('Thank you for your business!'));
+            buffers.push(CMD.FEED);
+        }
+
+        buffers.push(CMD.SIZE_NORMAL);
+        buffers.push(this.text(`Rate: 1 USD = ${RATE.toLocaleString()} LBP`));
+        buffers.push(CMD.FEED);
+
+        buffers.push(CMD.FEED);
+        buffers.push(CMD.FEED);
+        buffers.push(CMD.FEED);
+        buffers.push(CMD.CUT);
+
+        const fullPayload = Buffer.concat(buffers);
+        await this.write(fullPayload);
+    }
+}
+
+// --- Express Server ---
+const app = express();
+const port = 4000; // Agent runs on 4000
+const printer = new LocalReceiptPrinter();
+
+app.use(cors({ origin: '*' })); // Allow browser to call localhost
+app.use(express.json());
+
+app.post('/print', async (req, res) => {
+    console.log('[Agent] Print request received');
+    try {
+        await printer.printReceipt(req.body);
+        console.log('[Agent] Print successful');
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('[Agent] Print failed:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/status', (req, res) => {
+    res.json({ status: 'running', printer_connected: true });
+});
+
+app.listen(port, () => {
+    console.log(`
+    🚀 Printer Agent Running!
+    -------------------------
+    Listening on: http://localhost:${port}
+    Printer Device: ${printer['devicePath'] || 'NONE DETECTED'}
+    
+    Keep this terminal open to allow printing from the web app.
+    `);
+});

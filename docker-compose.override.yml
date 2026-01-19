@@ -1,0 +1,5 @@
+# Local/production override enabling the options system feature flag
+services:
+  app:
+    environment:
+      - ENABLE_OPTIONS_SYSTEM=true

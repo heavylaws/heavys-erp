@@ -1,0 +1,9 @@
+node_modules
+# dist
+release
+backups
+.git
+.DS_Store
+*.tar.gz
+*.sql
+npm-debug.log
