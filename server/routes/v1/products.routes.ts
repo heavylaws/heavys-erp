@@ -11,6 +11,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { storage } from '../../storage';
+import { productService } from '../../services/product.service';
 import { isAuthenticated } from '../../auth-middleware';
 import { insertProductSchema } from '@shared/schema';
 import { ENABLE_OPTIONS_SYSTEM } from '@shared/feature-flags';
@@ -36,16 +37,16 @@ router.get('/', async (req, res) => {
         const { categoryId } = req.query;
         let products;
         if (categoryId) {
-            products = await storage.getProductsByCategory(categoryId as string);
+            products = await productService.getProductsByCategory(categoryId as string);
         } else {
-            products = await storage.getProducts();
+            products = await productService.getProducts();
         }
 
         // For ingredient_based products, fetch and attach recipeIngredients
         const enriched = await Promise.all(products.map(async (p) => {
             let base: any = p;
             if (p.type === 'ingredient_based') {
-                const recipeIngredients = await storage.getRecipeIngredients(p.id);
+                const recipeIngredients = await productService.getRecipeIngredients(p.id);
                 base = { ...base, recipeIngredients };
             }
 
@@ -95,29 +96,18 @@ router.get('/', async (req, res) => {
  * Fallback/Legacy route for products by category
  */
 router.get('/:categoryId', isAuthenticated, async (req, res) => {
-    // Check if param is arguably a UUID, if so assume it is a category ID look up
-    // If strict UUID check fails, it might be a collision with other :id routes if not mounted carefully.
-    // The consumer should likely use /api/products?categoryId=... instead.
-    // But strictly mirroring old routes:
     try {
         const { categoryId } = req.params;
-        // Check if it looks like a category fetch or product detail fetch? 
-        // Old route was /api/products/:categoryId. 
-        // NOTE: This overlaps with GET /api/products/:id for single product if we had one.
-        // The monolithic routes didn't seem to have a specific GET /product/:id endpoint, only GET /products/:categoryId
+        const products = await productService.getProductsByCategory(categoryId);
 
-        const products = await storage.getProductsByCategory(categoryId);
-        // Reuse enrichment logic? for now kept simple or consistent with monolithic
         if (!ENABLE_OPTIONS_SYSTEM) return res.json(products);
 
         const enriched = await Promise.all(products.map(async (p) => {
             let base: any = p;
             if (p.type === 'ingredient_based') {
-                const recipeIngredients = await storage.getRecipeIngredients(p.id);
+                const recipeIngredients = await productService.getRecipeIngredients(p.id);
                 base = { ...base, recipeIngredients };
             }
-            // Options logic omitted for brevity as it duplicates above - but ideally should be shared function
-            // For now, mirroring strict behavior of old route if possible
             return base;
         }));
         res.json(enriched);
@@ -149,7 +139,7 @@ router.post('/', isAuthenticated, requireManager, async (req: any, res) => {
             });
         }
 
-        const product = await storage.createProduct(parsed.data);
+        const product = await productService.createProduct(parsed.data);
         res.json(product);
     } catch (error) {
         console.error("Error creating product:", error);
@@ -165,7 +155,7 @@ router.patch('/:id', isAuthenticated, requireManager, async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
-        const product = await storage.updateProduct(id, updateData);
+        const product = await productService.updateProduct(id, updateData);
         res.json(product);
     } catch (error) {
         console.error("Error updating product:", error);
@@ -180,7 +170,7 @@ router.patch('/:id', isAuthenticated, requireManager, async (req, res) => {
 router.delete('/:id', isAuthenticated, requireManager, async (req, res) => {
     try {
         const { id } = req.params;
-        await storage.deleteProduct(id);
+        await productService.deleteProduct(id);
         res.json({ message: 'Product deactivated successfully' });
     } catch (error) {
         console.error("Error deleting product:", error);
@@ -201,8 +191,8 @@ router.patch('/:id/stock', isAuthenticated, requireManager, async (req: any, res
             return res.status(400).json({ message: "quantityChange must be a number" });
         }
 
-        await storage.updateProductStock(id, quantityChange, req.session.user.id, reason);
-        const updatedProduct = await storage.getProduct(id);
+        await productService.updateProductStock(id, quantityChange, req.session.user.id, reason);
+        const updatedProduct = await productService.getProduct(id);
         res.json(updatedProduct);
     } catch (error) {
         console.error("Error updating product stock:", error);
@@ -219,7 +209,7 @@ router.patch('/:id/stock', isAuthenticated, requireManager, async (req: any, res
 router.get('/:id/recipe', isAuthenticated, async (req, res) => {
     try {
         const { id } = req.params;
-        const recipeIngredients = await storage.getRecipeIngredients(id);
+        const recipeIngredients = await productService.getRecipeIngredients(id);
         res.json(recipeIngredients);
     } catch (error) {
         console.error("Error fetching recipe ingredients:", error);
@@ -234,7 +224,7 @@ router.get('/:id/recipe', isAuthenticated, async (req, res) => {
 router.get('/:id/optional-ingredients', isAuthenticated, async (req, res) => {
     try {
         const { id } = req.params;
-        const optionalIngredients = await storage.getOptionalRecipeIngredients(id);
+        const optionalIngredients = await productService.getOptionalRecipeIngredients(id);
         res.json(optionalIngredients);
     } catch (error) {
         console.error('Error fetching optional recipe ingredients:', error);
@@ -251,7 +241,7 @@ router.post('/:id/recipe', isAuthenticated, requireManager, async (req, res) => 
         const { id } = req.params;
         const { ingredientId, quantity, isOptional = false } = req.body;
 
-        const recipeIngredient = await storage.createRecipeIngredient({
+        const recipeIngredient = await productService.createRecipeIngredient({
             productId: id,
             ingredientId,
             quantity: quantity.toString(),
@@ -265,9 +255,6 @@ router.post('/:id/recipe', isAuthenticated, requireManager, async (req, res) => 
     }
 });
 
-// Since these are manipulating recipe ingredients resources directly,
-// we'll keep them here or in inventory. But since they are tied to managing product recipes:
-
 /**
  * PATCH /api/recipe-ingredients/:id
  * Update a recipe ingredient link
@@ -279,7 +266,7 @@ router.patch('/recipe-ingredients/:id', isAuthenticated, requireManager, async (
         if (typeof req.body.isOptional === 'boolean') data.isOptional = req.body.isOptional;
         if (req.body.quantity) data.quantity = req.body.quantity.toString();
 
-        const updated = await storage.updateRecipeIngredient(id, data);
+        const updated = await productService.updateRecipeIngredient(id, data);
         res.json(updated);
     } catch (error) {
         console.error('Error updating recipe ingredient:', error);
@@ -294,7 +281,7 @@ router.patch('/recipe-ingredients/:id', isAuthenticated, requireManager, async (
 router.delete('/recipe-ingredients/:id', isAuthenticated, requireManager, async (req, res) => {
     try {
         const { id } = req.params;
-        await storage.deleteRecipeIngredient(id);
+        await productService.deleteRecipeIngredient(id);
         res.json({ message: "Recipe ingredient removed successfully" });
     } catch (error) {
         console.error("Error removing recipe ingredient:", error);

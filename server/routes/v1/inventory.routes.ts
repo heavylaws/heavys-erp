@@ -10,6 +10,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { storage } from '../../storage';
+import { inventoryService } from '../../services/inventory.service';
+import { productService } from '../../services/product.service';
 import { isAuthenticated } from '../../auth-middleware';
 import { insertIngredientSchema } from '@shared/schema';
 
@@ -27,14 +29,14 @@ router.get('/low-stock', isAuthenticated, async (req: any, res) => {
         }
 
         const [products, ingredients] = await Promise.all([
-            storage.getLowStockProducts(),
-            storage.getLowStockIngredients()
+            productService.getLowStockProducts(),
+            inventoryService.getLowStockIngredients()
         ]);
 
         // Attach recipeIngredients for ingredient_based products
-        const withRecipes = await Promise.all(products.map(async (p) => {
+        const withRecipes = await Promise.all(products.map(async (p: any) => {
             if (p.type === 'ingredient_based') {
-                const recipeIngredients = await storage.getRecipeIngredients(p.id);
+                const recipeIngredients = await productService.getRecipeIngredients(p.id);
                 return { ...p, recipeIngredients };
             }
             return p;
@@ -56,7 +58,7 @@ router.get('/low-stock', isAuthenticated, async (req: any, res) => {
 router.get('/ingredients-public', async (req, res) => {
     try {
         const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-        const ingredients = await storage.getIngredients(search);
+        const ingredients = await inventoryService.getIngredients(search);
         res.json(ingredients);
     } catch (error) {
         console.error('Error fetching public ingredients:', error);
@@ -71,7 +73,7 @@ router.get('/ingredients-public', async (req, res) => {
 router.get('/ingredients', isAuthenticated, async (req, res) => {
     try {
         const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-        const ingredients = await storage.getIngredients(search);
+        const ingredients = await inventoryService.getIngredients(search);
         res.json(ingredients);
     } catch (error) {
         console.error("Error fetching ingredients:", error);
@@ -91,7 +93,7 @@ router.post('/ingredients', isAuthenticated, async (req: any, res) => {
         }
 
         const ingredientData = insertIngredientSchema.parse(req.body);
-        const ingredient = await storage.createIngredient(ingredientData);
+        const ingredient = await inventoryService.createIngredient(ingredientData);
         res.json(ingredient);
     } catch (error) {
         console.error("Error creating ingredient:", error);
@@ -112,7 +114,7 @@ router.patch('/ingredients/:id', isAuthenticated, async (req: any, res) => {
 
         const { id } = req.params;
         const updateData = req.body;
-        const ingredient = await storage.updateIngredient(id, updateData);
+        const ingredient = await inventoryService.updateIngredient(id, updateData);
         res.json(ingredient);
     } catch (error) {
         console.error("Error updating ingredient:", error);
@@ -133,7 +135,7 @@ router.put('/ingredients/:id', isAuthenticated, async (req: any, res) => {
 
         const { id } = req.params;
         const ingredientData = insertIngredientSchema.parse(req.body);
-        const ingredient = await storage.updateIngredient(id, ingredientData);
+        const ingredient = await inventoryService.updateIngredient(id, ingredientData);
         res.json(ingredient);
     } catch (error) {
         console.error("Error updating ingredient:", error);
@@ -153,7 +155,7 @@ router.delete('/ingredients/:id', isAuthenticated, async (req: any, res) => {
         }
 
         const { id } = req.params;
-        await storage.deleteIngredient(id);
+        await inventoryService.deleteIngredient(id);
         res.json({ message: 'Ingredient deleted successfully' });
     } catch (error) {
         console.error("Error deleting ingredient:", error);
@@ -179,7 +181,7 @@ router.patch('/ingredients/:id/stock', isAuthenticated, async (req: any, res) =>
             return res.status(400).json({ message: "quantityChange must be a number" });
         }
 
-        await storage.updateIngredientStock(id, quantityChange, user.id, reason);
+        await inventoryService.updateIngredientStock(id, quantityChange, user.id, reason);
         res.json({ success: true });
     } catch (error) {
         console.error("Error updating ingredient stock:", error);
@@ -198,7 +200,7 @@ router.post('/ingredients/:id/stock', isAuthenticated, async (req: any, res) => 
         const { id } = req.params;
         const { quantity, reason } = req.body;
 
-        await storage.updateIngredientStock(id, quantity, user.id, reason);
+        await inventoryService.updateIngredientStock(id, quantity, user.id, reason);
         res.json({ success: true });
     } catch (error) {
         console.error("Error updating ingredient stock:", error);

@@ -8,7 +8,7 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { storage } from '../../storage';
+import { settingsService } from '../../services/settings.service';
 import { isAuthenticated, isAdmin } from '../../auth-middleware';
 import { insertCompanySettingsSchema, insertReceiptSettingsSchema } from '@shared/schema';
 
@@ -20,7 +20,7 @@ const router = Router();
  */
 router.get('/company', async (req, res) => {
     try {
-        const settings = await storage.getCompanySettings();
+        const settings = await settingsService.getCompanySettings();
         res.json(settings || {});
     } catch (error) {
         console.error('Error fetching company settings:', error);
@@ -36,7 +36,7 @@ router.post('/company', isAuthenticated, isAdmin, async (req, res) => {
     try {
         console.log('Received company settings update:', req.body);
         const settingsData = insertCompanySettingsSchema.parse(req.body);
-        const updatedSettings = await storage.updateCompanySettings(settingsData);
+        const updatedSettings = await settingsService.updateCompanySettings(settingsData);
         res.json(updatedSettings);
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -55,7 +55,7 @@ router.post('/company', isAuthenticated, isAdmin, async (req, res) => {
  */
 router.get('/receipt', async (req, res) => {
     try {
-        const settings = await storage.getReceiptSettings();
+        const settings = await settingsService.getReceiptSettings();
         res.json(settings || {});
     } catch (error) {
         console.error('Error fetching receipt settings:', error);
@@ -70,7 +70,7 @@ router.get('/receipt', async (req, res) => {
 router.post('/receipt', isAuthenticated, isAdmin, async (req, res) => {
     try {
         const settingsData = insertReceiptSettingsSchema.parse(req.body);
-        const updatedSettings = await storage.updateReceiptSettings(settingsData);
+        const updatedSettings = await settingsService.updateReceiptSettings(settingsData);
         res.json(updatedSettings);
     } catch (error) {
         if (error instanceof z.ZodError) {

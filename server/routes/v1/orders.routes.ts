@@ -12,6 +12,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { storage } from '../../storage';
+import { orderService } from '../../services/order.service';
+import { productService } from '../../services/product.service';
 import { isAuthenticated, isAdmin } from '../../auth-middleware';
 import { broadcastOrderUpdate, broadcast } from '../../services/websocket';
 import { insertFavoriteComboSchema, insertOrderSchema, insertOrderItemSchema } from '@shared/schema';
@@ -19,6 +21,7 @@ import { ENABLE_OPTIONS_SYSTEM } from '@shared/feature-flags';
 
 const router = Router();
 
+// Validation Schemas
 const favoriteComboItemInputSchema = z.object({
     productId: z.string().min(1, 'Product is required'),
     quantity: z.number().int().min(1, 'Quantity must be at least 1').max(99, 'Quantity too large'),
@@ -55,12 +58,12 @@ router.get('/', isAuthenticated, async (req, res) => {
         if (status) {
             // If include_items is set, use the optimized endpoint that returns items inline
             if (include_items === 'true') {
-                orders = await storage.getOrdersByStatusWithItems(status as string);
+                orders = await orderService.getOrdersByStatusWithItems(status as string);
             } else {
-                orders = await storage.getOrdersByStatus(status as string);
+                orders = await orderService.getOrdersByStatus(status as string);
             }
         } else {
-            orders = await storage.getOrders(limit ? parseInt(limit as string) : undefined);
+            orders = await orderService.getOrders(limit ? parseInt(limit as string) : undefined);
         }
 
         // Optional filter: only orders explicitly sent to barista
@@ -88,7 +91,7 @@ router.get('/', isAuthenticated, async (req, res) => {
 router.get('/:id', isAuthenticated, async (req: any, res) => {
     try {
         const { id } = req.params;
-        const order = await storage.getOrderWithDetails(id);
+        const order = await orderService.getOrderWithDetails(id);
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
         }
@@ -106,7 +109,7 @@ router.get('/:id', isAuthenticated, async (req: any, res) => {
 router.get('/:id/items', isAuthenticated, async (req, res) => {
     try {
         const { id } = req.params;
-        const items = await storage.getOrderItems(id);
+        const items = await orderService.getOrderItems(id);
         res.json(items);
     } catch (error) {
         console.error("Error fetching order items:", error);
@@ -137,7 +140,7 @@ router.post('/', isAuthenticated, async (req: any, res) => {
         }
 
         // Get next order number
-        const orderNumber = await storage.getNextOrderNumber();
+        const orderNumber = await orderService.getNextOrderNumber();
 
         // Calculate subtotal from items (including selected option price adjustments if flag enabled)
         let subtotal = 0;
@@ -151,6 +154,7 @@ router.post('/', isAuthenticated, async (req: any, res) => {
 
             if (ENABLE_OPTIONS_SYSTEM && Array.isArray(item.selectedOptionIds) && item.selectedOptionIds.length) {
                 const uniqueOptionIds = Array.from(new Set(item.selectedOptionIds.map((id: any) => String(id))));
+                // Options still on storage
                 const optionEntities = await (storage as any).getOptionsByIds(uniqueOptionIds);
                 selectedOptionIds = optionEntities.map((o: any) => o.id);
                 for (const opt of optionEntities) {
@@ -166,7 +170,8 @@ router.post('/', isAuthenticated, async (req: any, res) => {
             if (Array.isArray(item.selectedOptionalIngredientIds) && item.selectedOptionalIngredientIds.length) {
                 const uniqueOptionalIds = Array.from(new Set(item.selectedOptionalIngredientIds.map((id: any) => String(id))));
                 if (!optionalIngredientCache[item.productId]) {
-                    optionalIngredientCache[item.productId] = await storage.getOptionalRecipeIngredients(item.productId);
+                    // Use ProductService
+                    optionalIngredientCache[item.productId] = await productService.getOptionalRecipeIngredients(item.productId);
                 }
                 const optionalMap = new Map(
                     (optionalIngredientCache[item.productId] || []).map((row: any) => [row.recipeIngredientId, row])
@@ -234,7 +239,7 @@ router.post('/', isAuthenticated, async (req: any, res) => {
 
         let order;
         try {
-            order = await storage.createOrderTransaction(orderWithNumber, items, user.id);
+            order = await orderService.createOrderTransaction(orderWithNumber, items, user.id);
         } catch (err) {
             console.error('Order transaction failed:', err);
             if (err && (err as Error).message && (err as Error).message.includes('Insufficient')) {
@@ -286,9 +291,12 @@ router.patch('/:id', isAuthenticated, async (req: any, res) => {
             updateData.courierId = user.id;
         }
 
-        const order = await storage.updateOrder(id, updateData);
+        const order = await orderService.updateOrder(id, updateData);
 
         if (typeof updateData.sentToBarista !== 'undefined' && updateData.sentToBarista === true) {
+            // Activity log for now on storage, or should move to ActivityService?
+            // storage.createActivityLog is used. storage.ts has it.
+            // I'll keep storage for ActivityLog for now as it's not migrated.
             try {
                 await storage.createActivityLog({
                     userId: user.id,
@@ -324,16 +332,16 @@ router.put('/:id', isAuthenticated, async (req: any, res) => {
         const { order: orderData, items } = req.body;
 
         // Update the order
-        const updatedOrder = await storage.updateOrder(id, orderData);
+        const updatedOrder = await orderService.updateOrder(id, orderData);
 
         // If items are provided, update them too
         if (items && Array.isArray(items)) {
             // Delete existing order items
-            await storage.deleteOrderItems(id);
+            await orderService.deleteOrderItems(id);
 
             // Create new order items
             for (const item of items) {
-                await storage.createOrderItem({
+                await orderService.createOrderItem({
                     orderId: id,
                     productId: item.productId,
                     quantity: item.quantity,
@@ -369,7 +377,7 @@ router.delete('/:id', isAuthenticated, async (req: any, res) => {
             return res.status(403).json({ message: "Insufficient permissions to delete orders" });
         }
 
-        await storage.deleteOrder(id);
+        await orderService.deleteOrder(id);
 
         broadcast({
             type: 'order_deleted',
@@ -394,7 +402,7 @@ router.post('/:id/call', isAuthenticated, async (req: any, res) => {
 
         const { id } = req.params;
         const updateData: any = { calledAt: new Date(), status: 'ready' };
-        const updated = await storage.updateOrder(id, updateData);
+        const updated = await orderService.updateOrder(id, updateData);
         broadcastOrderUpdate(updated);
         res.json(updated);
     } catch (error) {
@@ -403,7 +411,7 @@ router.post('/:id/call', isAuthenticated, async (req: any, res) => {
     }
 });
 
-// --- Favorites Routes ---
+// --- Favorites Routes (Still using storage for now) ---
 
 /**
  * GET /api/favorites
