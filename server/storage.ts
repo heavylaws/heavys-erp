@@ -71,6 +71,9 @@ import {
   type InsertFavoriteComboItem,
   type ReceiptSettings,
   type InsertReceiptSettings,
+  companySettings,
+  type CompanySettings,
+  type InsertCompanySettings
 } from "@shared/schema";
 import { db, rawClient } from "./db";
 import { eq, desc, asc, and, or, sql, gte, lte, inArray, ne } from "drizzle-orm";
@@ -231,6 +234,10 @@ export interface IStorage {
   getProfitLoss(startDate?: Date, endDate?: Date): Promise<Array<{ date: string; revenue: number; cost: number; profit: number }>>;
   getMenuMatrix(startDate?: Date, endDate?: Date): Promise<Array<{ productId: string; name: string; salesVolume: number; revenue: number; profit: number; margin: number }>>;
   getCustomReport(startTime: Date, endTime: Date): Promise<any>;
+
+  // Company Settings
+  getCompanySettings(): Promise<CompanySettings | undefined>;
+  updateCompanySettings(settings: InsertCompanySettings): Promise<CompanySettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -660,6 +667,31 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(recipeIngredients).set(data).where(eq(recipeIngredients.id, id)).returning();
     if (!updated) throw new Error('Recipe ingredient not found');
     return updated;
+  }
+
+  // Company Settings
+  async getCompanySettings(): Promise<CompanySettings | undefined> {
+    const [settings] = await db.select().from(companySettings).limit(1);
+    return settings;
+  }
+
+  async updateCompanySettings(settings: InsertCompanySettings): Promise<CompanySettings> {
+    const [existing] = await db.select().from(companySettings).limit(1);
+
+    if (existing) {
+      const [updated] = await db
+        .update(companySettings)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(companySettings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(companySettings)
+        .values(settings)
+        .returning();
+      return created;
+    }
   }
 
   // Order operations

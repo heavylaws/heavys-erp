@@ -1,0 +1,45 @@
+[Unit]
+Description=Heavys ERP - Point of Sale System
+Documentation=https://github.com/heavylaws/heavys-erp
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=heavys
+Group=heavys
+WorkingDirectory=/opt/heavys-erp
+
+# Main process - uses the compiled production bundle
+ExecStart=/usr/bin/node dist/index.cjs
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=heavys-erp
+
+# Environment
+Environment=NODE_ENV=production
+Environment=PORT=5000
+EnvironmentFile=-/opt/heavys-erp/.env
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/heavys-erp /var/log/heavys-erp
+
+# Resource limits
+MemoryMax=1G
+TasksMax=100
+
+[Install]
+WantedBy=multi-user.target

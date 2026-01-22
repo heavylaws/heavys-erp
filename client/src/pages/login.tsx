@@ -6,6 +6,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { type CompanySettings } from "@shared/schema";
 
 export default function Login() {
   const { user, isLoading } = useAuth();
@@ -14,36 +16,42 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
+  const { data: settings } = useQuery<CompanySettings>({
+    queryKey: ['/api/settings/company'],
+  });
+
+  const companyName = settings?.name || "Highway Cafe POS";
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
-    
+
     try {
       console.log('Frontend: Attempting login with:', { username, password: '***' });
-      
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
         credentials: 'include'
       });
-      
+
       console.log('Frontend: Login response status:', response.status);
-      
+
       if (response.ok) {
         const userData = await response.json();
         console.log('Frontend: Login successful, user data:', userData);
-        
+
         // Invalidate auth cache to trigger re-fetch
         const queryClient = await import('@/lib/queryClient').then(m => m.queryClient);
         queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
-        
+
         toast({
           title: "Login Successful",
           description: `Welcome back, ${userData.firstName}!`,
           variant: "default",
         });
-        
+
         // Don't reload - let React Query handle the state change
         console.log('Frontend: Login complete, React Query will update auth state');
       } else {
@@ -87,10 +95,10 @@ export default function Login() {
               <div className="bg-primary p-4 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
                 <Coffee className="text-white text-2xl h-8 w-8" />
               </div>
-              <h1 className="text-2xl font-bold text-neutral mb-2">Highway Cafe POS</h1>
+              <h1 className="text-2xl font-bold text-neutral mb-2">{companyName}</h1>
               <p className="text-gray-600">Please log in to continue</p>
             </div>
-            
+
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
@@ -103,7 +111,7 @@ export default function Login() {
                   required
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
@@ -115,16 +123,16 @@ export default function Login() {
                   required
                 />
               </div>
-              
-              <Button 
-                type="submit" 
+
+              <Button
+                type="submit"
                 className="w-full py-3"
                 disabled={isLoggingIn}
               >
                 {isLoggingIn ? "Signing In..." : "Sign In"}
               </Button>
             </form>
-            
+
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h3>
               <div className="text-xs text-gray-600 space-y-1">

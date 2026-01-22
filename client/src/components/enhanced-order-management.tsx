@@ -13,6 +13,8 @@ import { Trash2, Edit, AlertTriangle, Search, Filter, RefreshCw, ExternalLink, X
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { printReceipt } from "@/lib/printer-api";
+import { InvoiceTemplate, useInvoiceGenerator } from "@/components/invoice-template";
+import { FileText } from "lucide-react";
 
 interface Order {
   id: string;
@@ -49,6 +51,17 @@ export function EnhancedOrderManagement() {
     customerPhone: "",
     status: ""
   });
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null); // State for invoice preview
+  const { createInvoiceFromOrder } = useInvoiceGenerator();
+
+  // Company info for invoices (TODO: Move to settings)
+  const companyInfo = {
+    name: "Heavy's Retail",
+    address: "123 Business Rd, Commerce City",
+    phone: "+1 (555) 123-4567",
+    email: "billing@heavys.com",
+    taxId: "TAX-12345678"
+  };
 
   // Fetch orders
   const { data: allOrders = [], isLoading, refetch } = useQuery<Order[]>({
@@ -208,6 +221,39 @@ export function EnhancedOrderManagement() {
         title: "Print Failed",
         description: error.message || "Could not print receipt",
         variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateInvoice = async (orderId: string) => {
+    try {
+      toast({ title: "Generating Invoice..." });
+      const res = await apiRequest('GET', `/api/orders/${orderId}`);
+      const fullOrder = await res.json();
+
+      // Ensure items have necessary structure for invoice
+      const orderWithMappedItems = {
+        ...fullOrder,
+        items: fullOrder.items.map((item: any) => ({
+          name: item.product?.name || "Unknown Item",
+          quantity: item.quantity,
+          price: item.priceAtOrder, // map priceAtOrder to price for generator
+          sku: item.product?.sku
+        }))
+      };
+
+      const invoiceData = createInvoiceFromOrder(orderWithMappedItems, {
+        name: fullOrder.customerName,
+        phone: fullOrder.customerPhone,
+        address: fullOrder.customerAddress
+      });
+
+      setViewingInvoice(invoiceData);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to generate invoice: " + error.message,
+        variant: "destructive"
       });
     }
   };
@@ -385,6 +431,16 @@ export function EnhancedOrderManagement() {
                           <Printer className="h-4 w-4" />
                         </Button>
 
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCreateInvoice(order.id)}
+                          title="Print A4 Invoice"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+
                         {canDeleteOrder(order) && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -502,6 +558,13 @@ export function EnhancedOrderManagement() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      )}
+      {viewingInvoice && (
+        <InvoiceTemplate
+          invoice={viewingInvoice}
+          company={companyInfo}
+          onClose={() => setViewingInvoice(null)}
+        />
       )}
     </div>
   );

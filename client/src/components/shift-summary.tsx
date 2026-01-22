@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Clock, DollarSign, ShoppingCart, TrendingUp, Award, LogOut, Printer } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { formatDualCurrency } from "@shared/currency-utils";
-import type { Shift, User, CurrencyRate } from "@shared/schema";
+import type { Shift, User, CurrencyRate, CompanySettings } from "@shared/schema";
 
 interface ShiftSummaryProps {
   currentUser: User;
@@ -22,6 +22,9 @@ export function ShiftSummary({ currentUser, completedShift, onLogout }: ShiftSum
   const { data: currentRate } = useQuery<CurrencyRate>({
     queryKey: ["/api/currency-rates/current"],
   });
+
+  const { data: settings } = useQuery<CompanySettings>({ queryKey: ['/api/settings/company'] });
+  const companyName = settings?.name || "Highway Cafe";
 
   useEffect(() => {
     if (completedShift.startTime && completedShift.endTime) {
@@ -59,7 +62,7 @@ export function ShiftSummary({ currentUser, completedShift, onLogout }: ShiftSum
       </head>
       <body>
         <div class="header">
-          <h1>Highway Cafe - Shift Summary</h1>
+          <h1>{companyName} - Shift Summary</h1>
           <p><strong>Employee:</strong> ${currentUser.firstName} ${currentUser.lastName} (${currentUser.role})</p>
           <p><strong>Date:</strong> ${new Date(completedShift.startTime).toLocaleDateString()}</p>
           <p><strong>Shift Time:</strong> ${new Date(completedShift.startTime).toLocaleTimeString()} - ${new Date(completedShift.endTime!).toLocaleTimeString()}</p>
@@ -157,7 +160,7 @@ export function ShiftSummary({ currentUser, completedShift, onLogout }: ShiftSum
                 <div>
                   <p className="text-sm text-muted-foreground">Total Sales</p>
                   <p className="text-2xl font-bold" data-testid="text-shift-sales">
-                    {currentRate && (currentRate as any).rate ? 
+                    {currentRate && (currentRate as any).rate ?
                       formatDualCurrency(totalSales, parseFloat((currentRate as any).rate)) :
                       formatCurrency(totalSales)
                     }

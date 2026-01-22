@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Shield, Users, Package, FolderOpen, ChefHat, ShoppingCart, LogOut, Settings, Terminal } from "lucide-react";
+import { Shield, Users, Package, FolderOpen, ChefHat, ShoppingCart, LogOut, Settings, Terminal, Building2 } from "lucide-react";
 import { UserManagement } from "@/components/user-management";
 import { ProductManagement } from "@/components/product-management";
 import { CategoryManagement } from "@/components/category-management";
@@ -22,6 +22,11 @@ import { Download, RotateCcw } from "lucide-react";
 import { formatDualCurrency } from '@shared/currency-utils';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import { OptionGroupManagement } from '@/components/option-group-management';
+import { SupplierManagement } from '@/components/supplier-management';
+import { CustomerManagement } from '@/components/customer-management';
+import { PurchaseOrderManagement } from '@/components/purchase-order-management';
+import { OrganizationSettings } from '@/components/organization-settings';
+import { Truck, ClipboardList } from "lucide-react";
 
 interface Analytics {
   sales: { total: number; count: number };
@@ -409,8 +414,8 @@ export default function AdminDashboard() {
 
         {/* Admin Management Tabs */}
         <Tabs defaultValue="users" className="w-full">
-          {/* Updated to grid-cols-8 to accommodate new Option Groups tab */}
-          <TabsList className="grid w-full grid-cols-8">
+          {/* Updated to grid-cols-11 to accommodate ERP tabs */}
+          <TabsList className="grid w-full grid-cols-11">
             <TabsTrigger value="users">
               <Users className="h-4 w-4 mr-2" />
               Users
@@ -423,13 +428,21 @@ export default function AdminDashboard() {
               <FolderOpen className="h-4 w-4 mr-2" />
               Categories
             </TabsTrigger>
-            <TabsTrigger value="ingredients">
-              <ChefHat className="h-4 w-4 mr-2" />
-              Ingredients
+            <TabsTrigger value="suppliers">
+              <Truck className="h-4 w-4 mr-2" />
+              Suppliers
+            </TabsTrigger>
+            <TabsTrigger value="customers">
+              <Users className="h-4 w-4 mr-2" />
+              Customers
+            </TabsTrigger>
+            <TabsTrigger value="purchase-orders">
+              <ClipboardList className="h-4 w-4 mr-2" />
+              PO
             </TabsTrigger>
             <TabsTrigger value="orders">
               <ShoppingCart className="h-4 w-4 mr-2" />
-              Orders
+              Sales
             </TabsTrigger>
             <TabsTrigger value="analytics">
               <Settings className="h-4 w-4 mr-2" />
@@ -439,9 +452,17 @@ export default function AdminDashboard() {
               💱
               Currency
             </TabsTrigger>
+            <TabsTrigger value="inventory">
+              📦
+              Inventory
+            </TabsTrigger>
             <TabsTrigger value="option-groups">
               <span className="mr-2">🧩</span>
-              Option Groups
+              Options
+            </TabsTrigger>
+            <TabsTrigger value="organization">
+              <Building2 className="h-4 w-4 mr-2" />
+              Settings
             </TabsTrigger>
           </TabsList>
 
@@ -457,28 +478,22 @@ export default function AdminDashboard() {
             <CategoryManagement />
           </TabsContent>
 
-          <TabsContent value="ingredients" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <ChefHat className="h-5 w-5" />
-                  <span>Ingredient Management</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <p className="text-gray-600">
-                    Complete ingredient inventory management with stock tracking and recipe integration.
-                  </p>
-                  <InventoryTable showIngredientsOnly={true} />
-                </div>
-              </CardContent>
-            </Card>
+          <TabsContent value="suppliers" className="space-y-6">
+            <SupplierManagement />
+          </TabsContent>
+
+          <TabsContent value="customers" className="space-y-6">
+            <CustomerManagement />
+          </TabsContent>
+
+          <TabsContent value="purchase-orders" className="space-y-6">
+            <PurchaseOrderManagement />
           </TabsContent>
 
           <TabsContent value="orders" className="space-y-6">
             <OrderManagement />
           </TabsContent>
+
 
           <TabsContent value="analytics" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -768,8 +783,26 @@ export default function AdminDashboard() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="inventory" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Package className="h-5 w-5" />
+                  <span>Inventory Management</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <InventoryTable />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="option-groups" className="space-y-6">
             <OptionGroupManagement />
+          </TabsContent>
+
+          <TabsContent value="organization" className="space-y-6">
+            <OrganizationSettings />
           </TabsContent>
         </Tabs>
       </div>

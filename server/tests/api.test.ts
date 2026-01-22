@@ -68,15 +68,31 @@ describe('API Tests', () => {
         expect(res.body.service).toBe('Highway Cafe POS');
     });
 
-    it('POST /api/auth/login succeeds with demo credentials', async () => {
-        // We mocked storage.getUserByUsername to return nothing (undefined) by default or we can mock rejection
-        // so it falls back to demo credentials 'admin'/'admin123'
+    it('POST /api/auth/login succeeds with valid database credentials', async () => {
+        // Mock storage.getUserByUsername to return a user with bcrypt-hashed password
+        // The hash below is for password 'TestPass123!' with cost factor 12
+        const { storage } = await import('../storage');
+        const bcrypt = await import('bcryptjs');
+        const hashedPassword = await bcrypt.hash('TestPass123!', 12);
+
+        (storage.getUserByUsername as any).mockResolvedValueOnce({
+            id: 'test-user-id',
+            username: 'testuser',
+            password: hashedPassword,
+            role: 'admin',
+            firstName: 'Test',
+            lastName: 'User',
+            email: 'test@example.com',
+            isActive: true,
+        });
+
         const res = await request(app)
             .post('/api/auth/login')
-            .send({ username: 'admin', password: 'admin123' });
+            .send({ username: 'testuser', password: 'TestPass123!' });
 
         expect(res.status).toBe(200);
         expect(res.body.role).toBe('admin');
+        expect(res.body.id).toBe('test-user-id');
     });
 
     it('POST /api/test returns 200', async () => {

@@ -3,6 +3,32 @@ import "./index.css";
 
 console.log("[DIAG] main.tsx loaded");
 
+// Safe removeChild patch to prevent "NotFoundError: Failed to execute 'removeChild' on 'Node'"
+// This is often caused by browser extensions (like Google Translate) or React hydration mismatches
+try {
+  const originalRemoveChild = Node.prototype.removeChild;
+  Node.prototype.removeChild = function <T extends Node>(child: T): T {
+    if (child.parentNode !== this) {
+      console.warn('[Robustness] Cannot remove child from a different parent', child, this);
+      return child;
+    }
+    return originalRemoveChild.apply(this, [child]) as T;
+  };
+
+  const originalInsertBefore = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function <T extends Node>(newNode: T, referenceNode: Node | null): T {
+    if (referenceNode && referenceNode.parentNode !== this) {
+      console.warn('[Robustness] Cannot insert before a reference node from a different parent', referenceNode, this);
+      if (referenceNode instanceof Element) {
+        return originalInsertBefore.apply(this, [newNode, null]) as T;
+      }
+    }
+    return originalInsertBefore.apply(this, [newNode, referenceNode]) as T;
+  };
+} catch (e) {
+  console.error('[Robustness] Failed to patch Node methods', e);
+}
+
 // Global runtime error surfaces to avoid blank page with silent failure
 function showFatal(err: unknown) {
   const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);

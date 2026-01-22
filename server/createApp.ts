@@ -4,25 +4,32 @@ import { log } from "./logger";
 import { initializeDemoData } from "./init-demo-data";
 import { initializeAchievements } from "./init-achievements";
 import { registerHealthCheck } from "./health-check";
+import helmet from "helmet";
 
 export async function createApp() {
     const app = express();
 
-    // CORS middleware for frontend-backend communication - allow all local network IPs
+    // Security headers - must be early in middleware chain
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Required for React dev
+                styleSrc: ["'self'", "'unsafe-inline'"],
+                imgSrc: ["'self'", "data:", "blob:"],
+                connectSrc: ["'self'", "ws:", "wss:"],
+            },
+        },
+        crossOriginEmbedderPolicy: false, // Required for some PWA features
+    }));
+
+    // CORS middleware for frontend-backend communication
     app.use((req, res, next) => {
         const origin = req.headers.origin;
-        console.log('CORS request:', {
-            origin,
-            method: req.method,
-            path: req.path,
-            hasCookies: !!req.headers.cookie
-        });
 
-        // Allow any origin for now to rule out CORS issues on remote devices
+        // Allow any origin for local network access
         if (origin) {
             res.header('Access-Control-Allow-Origin', origin);
-        } else {
-            res.header('Access-Control-Allow-Origin', 'http://localhost:5000');
         }
         res.header('Access-Control-Allow-Credentials', 'true');
         res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie');

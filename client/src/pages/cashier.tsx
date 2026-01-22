@@ -25,8 +25,10 @@ import { ShiftManagement } from "@/components/shift-management";
 import { ShiftButton } from "@/components/shift-button";
 import { ShiftSummary } from "@/components/shift-summary";
 import { ReceiptSettingsDialog } from "@/components/receipt-settings-dialog";
-import { ReceiptSettings } from "@shared/schema";
+import { ReceiptSettings, type CompanySettings } from "@shared/schema";
 import { printReceipt as sendToPrinter } from "@/lib/printer-api";
+import { InvoiceTemplate, useInvoiceGenerator } from "@/components/invoice-template";
+import { FileText } from "lucide-react";
 
 interface OrderItem {
   id?: string;
@@ -73,6 +75,22 @@ export default function CashierPOS() {
   const [autoSendToBaristaOnCash, setAutoSendToBaristaOnCash] = useState<boolean>(false);
   const [showShiftSummary, setShowShiftSummary] = useState(false);
   const [completedShift, setCompletedShift] = useState<any>(null);
+
+  // Invoice state
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
+  const { createInvoiceFromOrder } = useInvoiceGenerator();
+
+  const { data: settings } = useQuery<CompanySettings>({ queryKey: ['/api/settings/company'] });
+  const companyName = settings?.name || "Highway Cafe";
+
+  // Company info for invoices (Using dynamic settings)
+  const companyInfo = {
+    name: settings?.name || "Highway Cafe",
+    address: settings?.address || "123 Business Rd, Commerce City",
+    phone: settings?.phone || "+1 (555) 123-4567",
+    email: settings?.email || "billing@heavys.com",
+    taxId: settings?.taxId || "TAX-12345678"
+  };
 
   useWebSocket((message) => {
     if (message.type === 'order_update' || message.type === 'ORDER_UPDATE') {
@@ -749,7 +767,6 @@ export default function CashierPOS() {
     }
   });
 
-  // Print receipt
   const printReceipt = async (order: any) => {
     try {
       const formattedItems = order.items.map((item: any) => ({
@@ -759,9 +776,9 @@ export default function CashierPOS() {
       }));
 
       const receiptData = {
-        storeName: receiptSettings?.businessName || 'Highway Cafe',
-        address: receiptSettings?.address || '',
-        phone: receiptSettings?.phone || '',
+        storeName: settings?.name || receiptSettings?.businessName || 'Highway Cafe',
+        address: settings?.address || receiptSettings?.address || '',
+        phone: settings?.phone || receiptSettings?.phone || '',
         orderId: order.orderNumber || order.id,
         timestamp: order.createdAt || new Date(),
         items: formattedItems,
@@ -788,6 +805,36 @@ export default function CashierPOS() {
       });
     }
   };
+
+  const handleCreateInvoice = () => {
+    const currentOrder = getCurrentOrder();
+    if (!currentOrder) return;
+
+    // Convert CurrentOrder to format expected by invoice generator
+    const invoiceOrder = {
+      items: currentOrder.items.map(item => ({
+        ...item,
+        name: item.product?.name,
+        price: item.unitPrice,
+        product: {
+          ...item.product,
+          sku: item.product?.sku
+        }
+      })),
+      paymentMethod: 'Pending',
+      notes: ''
+    };
+
+    const invoiceData = createInvoiceFromOrder(invoiceOrder, {
+      name: (currentOrder as any).customerName || 'Walk-in Customer',
+      phone: (currentOrder as any).customerPhone,
+      address: (currentOrder as any).deliveryAddress
+    });
+
+    setViewingInvoice(invoiceData);
+  };
+
+
 
 
 
@@ -1434,6 +1481,15 @@ export default function CashierPOS() {
                             <Printer className="h-5 w-5 mr-2" />
                             Preview Receipt
                           </Button>
+                          <Button
+                            onClick={handleCreateInvoice}
+                            variant="outline"
+                            className="py-3 text-blue-600 border-blue-200 hover:bg-blue-50 col-span-2 mt-2"
+                            disabled={currentOrder.items.length === 0}
+                          >
+                            <FileText className="h-5 w-5 mr-2" />
+                            Print A4 Invoice
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -1453,6 +1509,14 @@ export default function CashierPOS() {
           </div>
         </div>
       </div>
+
+      {viewingInvoice && (
+        <InvoiceTemplate
+          invoice={viewingInvoice}
+          company={companyInfo}
+          onClose={() => setViewingInvoice(null)}
+        />
+      )}
     </div >
   );
 }

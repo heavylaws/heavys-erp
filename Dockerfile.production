@@ -114,15 +114,15 @@ RUN chmod +x /app/start-production.sh
 
 # Set production environment variables
 ENV NODE_ENV=production
-ENV PORT=5000
+ENV PORT=5003
 ENV ENABLE_VITE=false
 
 # Expose port
-EXPOSE 5000
+EXPOSE 5003
 
 # Health check with longer startup time
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
-    CMD curl -f http://localhost:5000/health || curl -f http://localhost:5000/ || exit 1
+    CMD curl -f http://localhost:5003/health || curl -f http://localhost:5003/ || exit 1
 
 # Start the application
 CMD ["/app/start-production.sh"]

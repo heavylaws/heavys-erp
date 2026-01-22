@@ -1,0 +1,36 @@
+[Unit]
+Description=Heavys ERP - Point of Sale System
+Documentation=https://github.com/heavylaws/heavys-erp
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hm
+Group=hm
+WorkingDirectory=/home/hm/.gemini/antigravity/scratch/heavys-erp
+
+# Main process - uses tsx for development or node for production
+# Explicitly set PATH to include NVM node bin
+Environment="PATH=/home/hm/.config/nvm/versions/node/v20.20.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/hm/.config/nvm/versions/node/v20.20.0/bin/npm run dev
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=heavys-erp
+
+# Environment
+Environment=NODE_ENV=development
+Environment=PORT=5000
+EnvironmentFile=-/home/hm/.gemini/antigravity/scratch/heavys-erp/.env
+
+[Install]
+WantedBy=multi-user.target

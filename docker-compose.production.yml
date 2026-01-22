@@ -8,13 +8,13 @@ services:
       context: .
       dockerfile: Dockerfile.production
     ports:
-      - "5000:5000"
+      - "5003:5003"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-highway_cafe_2024}@postgres:5432/highway_cafe
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-highway_cafe_2024}
       SESSION_SECRET: ${SESSION_SECRET:-highway_cafe_session_2024}
-      PORT: 5000
+      PORT: 5003
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: highway_cafe
@@ -35,7 +35,7 @@ services:
     networks:
       - highway_cafe_network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:5000/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:5003/health" ]
       interval: 30s
       timeout: 10s
       retries: 5

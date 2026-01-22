@@ -6,15 +6,29 @@ import { storage } from "./storage";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { z } from "zod";
-import { insertProductSchema, insertIngredientSchema, insertCategorySchema, insertOrderSchema, insertOrderItemSchema, insertUserSchema, insertOptionGroupSchema, insertOptionSchema, insertOptionIngredientSchema, insertProductOptionGroupSchema, insertFavoriteComboSchema, insertReceiptSettingsSchema } from "@shared/schema";
+import { insertProductSchema, insertIngredientSchema, insertCategorySchema, insertOrderSchema, insertOrderItemSchema, insertUserSchema, insertOptionGroupSchema, insertOptionSchema, insertOptionIngredientSchema, insertProductOptionGroupSchema, insertFavoriteComboSchema, insertReceiptSettingsSchema, insertCompanySettingsSchema } from "@shared/schema";
 import { ENABLE_OPTIONS_SYSTEM } from '@shared/feature-flags';
 
 import { isAuthenticated, isAdmin } from "./auth-middleware";
 import { exportRoutes } from "./export";
 import multer from 'multer';
 import { backupService } from './services/backup-service';
+import erpRoutes from './erp-routes';
+import v1Routes from './routes/v1'; // Architecture Modernization: Import v1 routes
+import { verifyPassword, isPasswordHashed, hashPassword } from './password-utils';
+import rateLimit from 'express-rate-limit';
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Rate limiter for authentication endpoints - prevent brute force attacks
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per IP per window
+  message: { message: 'Too many login attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful logins
+});
 
 // Global WebSocket clients storage
 let wssGlobal: WebSocketServer | null = null;
@@ -86,6 +100,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
   });
 
+
+
   // Serve Installer Files (Phase 10 Deployment)
   const path = await import('path');
   // Serve the shell script directly
@@ -114,7 +130,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Session middleware - optimized for both Replit and Docker environments
   const isDocker = process.env.REPLIT_DEPLOYMENT === 'true' || process.env.DATABASE_TYPE === 'postgres';
-  const sessionSecret = process.env.SESSION_SECRET || 'highway-cafe-secret';
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // SECURITY: Require SESSION_SECRET in production
+  if (isProduction && !process.env.SESSION_SECRET) {
+    console.error('CRITICAL: SESSION_SECRET environment variable is required in production!');
+    throw new Error('SESSION_SECRET must be set in production environment');
+  }
+  const sessionSecret = process.env.SESSION_SECRET || 'dev-only-secret-not-for-production';
 
   // Add error handling middleware before session
   app.use((err: any, req: any, res: any, next: any) => {
@@ -210,78 +233,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   });
 
+  // ERP Module Routes (Suppliers, Customers, Purchase Orders, Serial Numbers)
+  app.use('/api', erpRoutes);
+
   // Add a simple test endpoint to verify middleware is working
   app.post('/api/test', (req: any, res) => {
     console.log('Test endpoint reached');
     res.json({ message: 'Test successful', hasSession: !!req.session });
   });
 
-  // Credential-based login endpoint
-  app.post('/api/auth/login', async (req: any, res) => {
+  // Credential-based login endpoint with rate limiting
+  app.post('/api/auth/login', authRateLimiter, async (req: any, res) => {
     try {
       const { username, password } = req.body;
-      console.log('Login attempt:', { username, bodyType: typeof req.body, hasSession: !!req.session, origin: req.headers.origin });
 
-      // Demo credentials - in production, this would validate against a database
-      const validCredentials = {
-        'admin': { password: 'admin123', role: 'admin', firstName: 'Admin', lastName: 'User' },
-        'manager': { password: 'manager123', role: 'manager', firstName: 'Manager', lastName: 'User' },
-        'cashier': { password: 'cashier123', role: 'cashier', firstName: 'Cashier', lastName: 'User' },
-        'barista': { password: 'barista123', role: 'barista', firstName: 'Barista', lastName: 'User' },
-        'courier': { password: 'courier123', role: 'courier', firstName: 'Courier', lastName: 'User' }
-      };
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required" });
+      }
 
-      // First check database for user credentials
+      // Look up user in database
       let dbUser;
       try {
         dbUser = await storage.getUserByUsername(username);
       } catch (dbError) {
-        console.log('Database user lookup failed, falling back to demo credentials:', (dbError as Error).message);
-        dbUser = null;
+        console.error('Database user lookup failed:', (dbError as Error).message);
+        return res.status(500).json({ message: "Authentication service unavailable" });
       }
 
-      if (dbUser && dbUser.password === password && dbUser.isActive) {
-        const user = {
-          id: dbUser.id,
-          role: dbUser.role,
-          firstName: dbUser.firstName || '',
-          lastName: dbUser.lastName || '',
-          email: dbUser.email || `${dbUser.role}@highway-cafe.com`
-        };
-        // Create new session with user data
-        return req.session.regenerate((err: any) => {
-          if (err) {
-            console.error('Session regeneration error:', err);
-            return res.status(500).json({ message: "Session creation failed" });
-          }
-
-          req.session.user = user;
-          console.log('Setting session for database user:', user.id, user.role);
-
-          // Force session save and regenerate for Docker compatibility
-          return req.session.save((saveErr: any) => {
-            if (saveErr) {
-              console.error('Session save error:', saveErr);
-              return res.status(500).json({ message: "Session save failed" });
-            }
-            console.log('Database user session set and saved:', user);
-            return res.json(user);
-          });
-        });
+      if (!dbUser || !dbUser.isActive) {
+        // Generic message to prevent username enumeration
+        return res.status(401).json({ message: "Invalid username or password" });
       }
 
-      // Fallback to demo credentials
-      const credentials = validCredentials[username as keyof typeof validCredentials];
-      if (!credentials || credentials.password !== password) {
+      // Verify password using bcrypt if hashed, or plaintext for migration
+      let passwordValid = false;
+      if (isPasswordHashed(dbUser.password)) {
+        passwordValid = await verifyPassword(password, dbUser.password);
+      } else {
+        // Legacy plaintext comparison (for migration period)
+        // TODO: Remove after all passwords are migrated to bcrypt
+        passwordValid = dbUser.password === password;
+        if (passwordValid) {
+          console.warn(`User ${username} has legacy plaintext password - migration required`);
+        }
+      }
+
+      if (!passwordValid) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
 
       const user = {
-        id: `${credentials.role}-user`,
-        role: credentials.role,
-        firstName: credentials.firstName,
-        lastName: credentials.lastName,
-        email: `${credentials.role}@highway-cafe.com`
+        id: dbUser.id,
+        role: dbUser.role,
+        firstName: dbUser.firstName || '',
+        lastName: dbUser.lastName || '',
+        email: dbUser.email || `${dbUser.role}@company.com`
       };
 
       // Create new session with user data
@@ -292,15 +298,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         req.session.user = user;
-        console.log('Setting session for demo user:', user.id, user.role);
 
-        // Force session save for Docker compatibility  
+        // Force session save for Docker compatibility
         return req.session.save((saveErr: any) => {
           if (saveErr) {
             console.error('Session save error:', saveErr);
             return res.status(500).json({ message: "Session save failed" });
           }
-          console.log('Demo user session set and saved:', user);
           return res.json(user);
         });
       });
@@ -344,23 +348,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const existingUsers = await storage.getAllUsers();
       if (existingUsers.length === 0) {
-        console.log("Initializing demo users...");
+        console.log("Initializing demo users with hashed passwords...");
         const demoUsers = [
-          { username: 'admin', password: 'admin123', role: 'admin', firstName: 'Admin', lastName: 'User', email: 'admin@highway-cafe.com', isActive: true },
-          { username: 'manager', password: 'manager123', role: 'manager', firstName: 'Manager', lastName: 'User', email: 'manager@highway-cafe.com', isActive: true },
-          { username: 'cashier', password: 'cashier123', role: 'cashier', firstName: 'Cashier', lastName: 'User', email: 'cashier@highway-cafe.com', isActive: true },
-          { username: 'barista', password: 'barista123', role: 'barista', firstName: 'Barista', lastName: 'User', email: 'barista@highway-cafe.com', isActive: true },
-          { username: 'courier', password: 'courier123', role: 'courier', firstName: 'Courier', lastName: 'User', email: 'courier@highway-cafe.com', isActive: true },
-          { username: 'kiosk', password: 'kiosk123', role: 'cashier', firstName: 'Self-Service', lastName: 'Kiosk', email: 'kiosk@highway-cafe.com', isActive: true }
+          { username: 'admin', password: 'Admin123!', role: 'admin', firstName: 'Admin', lastName: 'User', email: 'admin@company.com', isActive: true },
+          { username: 'manager', password: 'Manager123!', role: 'manager', firstName: 'Manager', lastName: 'User', email: 'manager@company.com', isActive: true },
+          { username: 'cashier', password: 'Cashier123!', role: 'cashier', firstName: 'Cashier', lastName: 'User', email: 'cashier@company.com', isActive: true },
+          { username: 'barista', password: 'Barista123!', role: 'barista', firstName: 'Barista', lastName: 'User', email: 'barista@company.com', isActive: true },
+          { username: 'courier', password: 'Courier123!', role: 'courier', firstName: 'Courier', lastName: 'User', email: 'courier@company.com', isActive: true },
         ];
 
         for (const userData of demoUsers) {
+          const hashedPassword = await hashPassword(userData.password);
           await storage.createUser({
             ...userData,
+            password: hashedPassword,
             role: userData.role as "admin" | "manager" | "cashier" | "barista" | "courier"
           });
         }
-        console.log("Demo users initialized successfully");
+        console.log("Demo users initialized successfully with bcrypt hashed passwords");
       }
     } catch (error) {
       console.error("Error initializing demo users:", error);
@@ -394,11 +399,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userData = insertUserSchema.parse(req.body);
+
+      // Hash password before storing
+      const hashedPassword = await hashPassword(userData.password);
+
       const newUser = await storage.createUser({
         ...userData,
+        password: hashedPassword,
         role: userData.role as "admin" | "manager" | "cashier" | "barista" | "courier"
       });
-      res.json(newUser);
+
+      // Don't return password hash in response
+      const { password: _, ...safeUser } = newUser;
+      res.json(safeUser);
     } catch (error) {
       console.error("Error creating user:", error);
       res.status(500).json({ message: "Failed to create user" });
@@ -494,6 +507,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error updating user settings:', error);
       res.status(500).json({ message: 'Failed to update user settings' });
+    }
+  });
+
+  // Company Settings Routes
+  app.get('/api/settings/company', async (req, res) => {
+    try {
+      const settings = await storage.getCompanySettings();
+      res.json(settings || {});
+    } catch (error) {
+      console.error('Error fetching company settings:', error);
+      res.status(500).json({ message: 'Failed to fetch company settings' });
+    }
+  });
+
+  app.post('/api/settings/company', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      console.log('Received company settings update:', req.body);
+      const settingsData = insertCompanySettingsSchema.parse(req.body);
+      const updatedSettings = await storage.updateCompanySettings(settingsData);
+      res.json(updatedSettings);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.error('Validation error updating company settings:', JSON.stringify(error.errors, null, 2));
+        res.status(400).json({ message: 'Validation failed', errors: error.errors });
+      } else {
+        console.error('Error updating company settings:', error);
+        res.status(500).json({ message: 'Failed to update company settings', error: (error as Error).message });
+      }
     }
   });
 
@@ -2390,19 +2431,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Phase 2: Architecture Modernization - Mount v1 modular routes
+  app.use('/api/v1', v1Routes);
+
   const httpServer = createServer(app);
 
-  // WebSocket server for real-time updates
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  wssGlobal = wss; // Store globally for use in routes
+  // Initialize WebSocket Service (Shared)
+  // This replaces the local wssGlobal initialization to unify v1 and legacy
+  const { setupWebSocket } = await import('./services/websocket');
+  // Store globally for use in legacy routes (wssGlobal is let defined at top of file)
+  wssGlobal = setupWebSocket(httpServer);
 
-  wss.on('connection', (ws) => {
-    console.log('WebSocket client connected');
-
-    ws.on('close', () => {
-      console.log('WebSocket client disconnected');
-    });
-  });
+  return httpServer;
 
   app.use("/api/export", exportRoutes);
 

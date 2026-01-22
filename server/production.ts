@@ -14,7 +14,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  
+
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
   } else {
@@ -61,7 +61,7 @@ registerHealthCheck(app);
 
 (async () => {
   const server = await registerRoutes(app);
-  
+
   // Initialize demo data and achievements after routes are set up
   try {
     await initializeDemoData();
@@ -80,17 +80,17 @@ registerHealthCheck(app);
 
   // Production static file serving without Vite
   console.log("📁 Serving static files for production...");
-  
+
   // Use a CJS/ESM compatible static directory resolution. prefer __dirname if available (CJS), otherwise fallback to dist/public under process.cwd()
   const staticDir = (typeof __dirname !== 'undefined')
     ? path.join((__dirname as unknown as string), 'public')
     : path.join(process.cwd(), 'dist', 'public');
-  
+
   console.log(`🗂️  Static directory: ${staticDir}`);
-  
+
   // Serve static files
   app.use(express.static(staticDir));
-  
+
   // Catch-all handler for SPA routing
   app.get('*', (req, res) => {
     const indexPath = path.join(staticDir, 'index.html');
@@ -113,7 +113,7 @@ registerHealthCheck(app);
   });
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
-  const port = parseInt(process.env.PORT || '5000', 10);
+  const port = parseInt(process.env.PORT || '5003', 10);
 
   server.listen(port, "0.0.0.0", () => {
     log(`🏪 Highway Cafe POS Server running on port ${port}`);

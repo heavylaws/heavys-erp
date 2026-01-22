@@ -20,6 +20,7 @@ const KitchenDisplay = React.lazy(() => import("@/pages/kitchen-display"));
 const LeaderboardPage = React.lazy(() => import("@/pages/leaderboard"));
 const StrategicReports = React.lazy(() => import("@/pages/strategic-reports"));
 const AdminBackupPage = React.lazy(() => import("@/pages/admin-backup").then(module => ({ default: module.AdminBackupPage })));
+const PriceCheck = React.lazy(() => import("@/pages/price-check"));
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -38,6 +39,9 @@ function Router() {
   return (
     <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
       <Switch>
+        {/* Public route - Price Check Kiosk (no auth needed) */}
+        <Route path="/price-check" component={PriceCheck} />
+
         {!isAuthenticated ? (
           <>
             <Route path="/" component={Login} />

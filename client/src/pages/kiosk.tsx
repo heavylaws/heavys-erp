@@ -10,6 +10,7 @@ import { Coffee, ShoppingCart, ChevronLeft, Minus, Plus, CreditCard, User, Tag }
 import { Badge } from "@/components/ui/badge";
 import { useMobileOptimizations } from "@/components/mobile-optimizations";
 import { formatCurrency } from "@/lib/utils";
+import { type CompanySettings } from "@shared/schema";
 
 // Types
 interface CartItem {
@@ -43,6 +44,9 @@ export default function KioskPage() {
     // Data
     const { data: categories = [] } = useQuery<any[]>({ queryKey: ['/api/categories'] });
     const { data: products = [] } = useQuery<any[]>({ queryKey: ['/api/products'] });
+    const { data: settings } = useQuery<CompanySettings>({ queryKey: ['/api/settings/company'] });
+
+    const companyName = settings?.name || "Highway Cafe";
 
     // Filter products
     const activeProducts = selectedCategory
@@ -125,7 +129,7 @@ export default function KioskPage() {
                 <div className="animate-bounce mb-8">
                     <Coffee className="w-32 h-32 text-yellow-400" />
                 </div>
-                <h1 className="text-6xl font-bold mb-4">Highway Cafe</h1>
+                <h1 className="text-6xl font-bold mb-4">{companyName}</h1>
                 <p className="text-2xl opacity-80">Tap to Start Order</p>
                 <div className="mt-12 text-sm opacity-50">Self-Service Terminal #1</div>
             </div>

@@ -13,7 +13,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Session storage table (required for Replit Auth)
@@ -28,7 +28,7 @@ export const sessions = pgTable(
 );
 
 // User roles enum
-export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'cashier', 'barista', 'courier']);
+export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'cashier', 'warehouse', 'technician', 'sales', 'barista', 'courier']);
 
 // User storage table (required for Replit Auth)
 export const users = pgTable("users", {
@@ -64,13 +64,26 @@ export const products = pgTable("products", {
   name: varchar("name", { length: 200 }).notNull(),
   description: text("description"),
   barcode: varchar("barcode", { length: 100 }),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  sku: varchar("sku", { length: 50 }).unique(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(), // Selling price
   categoryId: varchar("category_id").references(() => categories.id),
   type: productTypeEnum("type").notNull().default('finished_good'),
   stockQuantity: decimal("stock_quantity", { precision: 10, scale: 3 }).notNull().default('0'),
   minThreshold: integer("min_threshold").notNull().default(5),
-  costPerUnit: decimal("cost_per_unit", { precision: 10, scale: 4 }),
-  forBarista: boolean("for_barista").notNull().default(false),
+  // Margin-based pricing
+  costPerUnit: decimal("cost_per_unit", { precision: 10, scale: 4 }), // Purchase/cost price
+  profitMargin: decimal("profit_margin", { precision: 5, scale: 2 }).default('25'), // Percentage (e.g., 25 = 25%)
+  // Hardware-specific fields
+  manufacturer: varchar("manufacturer", { length: 100 }),
+  model: varchar("model", { length: 100 }),
+  warrantyMonths: integer("warranty_months").default(0),
+  weight: decimal("weight", { precision: 10, scale: 3 }), // in kg
+  dimensions: jsonb("dimensions"), // { length, width, height }
+  specifications: jsonb("specifications"), // Custom specs per product
+  reorderPoint: integer("reorder_point").default(10),
+  reorderQuantity: integer("reorder_quantity").default(20),
+  location: varchar("location", { length: 50 }), // Warehouse bin/shelf
+  requiresSerialNumber: boolean("requires_serial_number").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -112,7 +125,7 @@ export const favoriteComboItems = pgTable("favorite_combo_items", {
 // Receipt settings table
 export const receiptSettings = pgTable("receipt_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  businessName: varchar("business_name", { length: 255 }).notNull().default('Highway Cafe'),
+  businessName: varchar("business_name", { length: 255 }).notNull().default('Heavy\'s Hardware'),
   address: varchar("address", { length: 255 }).default(''),
   phone: varchar("phone", { length: 50 }).default(''),
   headerText: text("header_text").default('Receipt'),
@@ -458,3 +471,200 @@ export type CurrencyRate = typeof currencyRates.$inferSelect;
 export type InsertCurrencyRate = z.infer<typeof insertCurrencyRateSchema>;
 
 // (No option system tables yet; will be conditionally added under ENABLE_OPTIONS_SYSTEM flag in future patch)
+
+// ---- ERP Module Tables ----
+
+// Customer type enum
+export const customerTypeEnum = pgEnum('customer_type', ['retail', 'wholesale', 'corporate']);
+
+// Purchase order status enum
+export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', ['draft', 'sent', 'partial', 'received', 'cancelled']);
+
+// Serial number status enum
+export const serialNumberStatusEnum = pgEnum('serial_number_status', ['in_stock', 'sold', 'returned', 'defective', 'warranty_repair']);
+
+// Suppliers table
+export const suppliers = pgTable("suppliers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  code: varchar("code", { length: 50 }).unique(),
+  contactPerson: varchar("contact_person", { length: 100 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  address: text("address"),
+  paymentTerms: varchar("payment_terms", { length: 100 }),
+  taxId: varchar("tax_id", { length: 50 }),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Product-Supplier relationship
+export const productSuppliers = pgTable("product_suppliers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  supplierId: varchar("supplier_id").references(() => suppliers.id).notNull(),
+  supplierSku: varchar("supplier_sku", { length: 100 }),
+  costPrice: decimal("cost_price", { precision: 10, scale: 2 }),
+  leadTimeDays: integer("lead_time_days"),
+  isPreferred: boolean("is_preferred").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_product_suppliers_product").on(table.productId),
+  index("idx_product_suppliers_supplier").on(table.supplierId),
+]);
+
+// Customers table (for B2B & warranty tracking)
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: customerTypeEnum("type").notNull().default('retail'),
+  name: varchar("name", { length: 200 }).notNull(),
+  code: varchar("code", { length: 50 }).unique(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  address: text("address"),
+  taxId: varchar("tax_id", { length: 50 }),
+  creditLimit: decimal("credit_limit", { precision: 12, scale: 2 }),
+  currentBalance: decimal("current_balance", { precision: 12, scale: 2 }).default('0'),
+  paymentTerms: varchar("payment_terms", { length: 100 }),
+  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).default('0'),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Purchase Orders
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderNumber: varchar("order_number", { length: 50 }).unique().notNull(),
+  supplierId: varchar("supplier_id").references(() => suppliers.id).notNull(),
+  status: purchaseOrderStatusEnum("status").notNull().default('draft'),
+  orderDate: timestamp("order_date").defaultNow(),
+  expectedDate: timestamp("expected_date"),
+  receivedDate: timestamp("received_date"),
+  subtotal: decimal("subtotal", { precision: 12, scale: 2 }),
+  tax: decimal("tax", { precision: 12, scale: 2 }),
+  shippingCost: decimal("shipping_cost", { precision: 10, scale: 2 }).default('0'),
+  total: decimal("total", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+  createdBy: varchar("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_purchase_orders_supplier").on(table.supplierId),
+  index("idx_purchase_orders_status").on(table.status),
+]);
+
+export const purchaseOrderItems = pgTable("purchase_order_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseOrderId: varchar("purchase_order_id").references(() => purchaseOrders.id, { onDelete: 'cascade' }).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  receivedQuantity: integer("received_quantity").default(0),
+  unitCost: decimal("unit_cost", { precision: 10, scale: 2 }).notNull(),
+  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_po_items_order").on(table.purchaseOrderId),
+]);
+
+// Serial Numbers (for electronics tracking)
+export const serialNumbers = pgTable("serial_numbers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  serialNumber: varchar("serial_number", { length: 100 }).unique().notNull(),
+  status: serialNumberStatusEnum("status").notNull().default('in_stock'),
+  purchaseOrderId: varchar("purchase_order_id").references(() => purchaseOrders.id),
+  orderId: varchar("order_id").references(() => orders.id),
+  customerId: varchar("customer_id").references(() => customers.id),
+  warrantyExpiry: timestamp("warranty_expiry"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_serial_product").on(table.productId),
+  index("idx_serial_status").on(table.status),
+  index("idx_serial_customer").on(table.customerId),
+]);
+
+// ---- ERP Relations ----
+export const suppliersRelations = relations(suppliers, ({ many }) => ({
+  productSuppliers: many(productSuppliers),
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const productSuppliersRelations = relations(productSuppliers, ({ one }) => ({
+  product: one(products, { fields: [productSuppliers.productId], references: [products.id] }),
+  supplier: one(suppliers, { fields: [productSuppliers.supplierId], references: [suppliers.id] }),
+}));
+
+export const customersRelations = relations(customers, ({ many }) => ({
+  orders: many(orders),
+  serialNumbers: many(serialNumbers),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  supplier: one(suppliers, { fields: [purchaseOrders.supplierId], references: [suppliers.id] }),
+  createdByUser: one(users, { fields: [purchaseOrders.createdBy], references: [users.id] }),
+  items: many(purchaseOrderItems),
+  serialNumbers: many(serialNumbers),
+}));
+
+export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [purchaseOrderItems.purchaseOrderId], references: [purchaseOrders.id] }),
+  product: one(products, { fields: [purchaseOrderItems.productId], references: [products.id] }),
+}));
+
+export const serialNumbersRelations = relations(serialNumbers, ({ one }) => ({
+  product: one(products, { fields: [serialNumbers.productId], references: [products.id] }),
+  purchaseOrder: one(purchaseOrders, { fields: [serialNumbers.purchaseOrderId], references: [purchaseOrders.id] }),
+  order: one(orders, { fields: [serialNumbers.orderId], references: [orders.id] }),
+  customer: one(customers, { fields: [serialNumbers.customerId], references: [customers.id] }),
+}));
+
+// ---- ERP Insert Schemas ----
+export const insertSupplierSchema = createInsertSchema(suppliers).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProductSupplierSchema = createInsertSchema(productSuppliers).omit({ id: true, createdAt: true });
+export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPurchaseOrderItemSchema = createInsertSchema(purchaseOrderItems).omit({ id: true, createdAt: true });
+export const insertSerialNumberSchema = createInsertSchema(serialNumbers).omit({ id: true, createdAt: true, updatedAt: true });
+
+// ---- ERP Types ----
+export type Supplier = typeof suppliers.$inferSelect;
+export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+export type ProductSupplier = typeof productSuppliers.$inferSelect;
+export type InsertProductSupplier = z.infer<typeof insertProductSupplierSchema>;
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
+export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
+export type InsertPurchaseOrderItem = z.infer<typeof insertPurchaseOrderItemSchema>;
+export type SerialNumber = typeof serialNumbers.$inferSelect;
+export type InsertSerialNumber = z.infer<typeof insertSerialNumberSchema>;
+
+
+// Company Settings table
+export const companySettings = pgTable("company_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().default("My Business"),
+  address: text("address").default(""),
+  phone: varchar("phone", { length: 50 }).default(""),
+  email: varchar("email", { length: 255 }).default(""),
+  website: varchar("website", { length: 255 }).default(""),
+  taxId: varchar("tax_id", { length: 100 }).default(""),
+  logoUrl: text("logo_url").default(""), // Base64 or URL
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  timezone: varchar("timezone", { length: 100 }).default("UTC"),
+  receiptHeader: text("receipt_header").default("Welcome!"),
+  receiptFooter: text("receipt_footer").default("Thank you for your visit!"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, updatedAt: true });
+export const selectCompanySettingsSchema = createSelectSchema(companySettings);
+export type CompanySettings = z.infer<typeof selectCompanySettingsSchema>;
+export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;

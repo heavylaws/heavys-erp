@@ -31,6 +31,7 @@ import { OptionGroupManagement } from '@/components/option-group-management';
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Database, Server, Wifi } from "lucide-react";
+import { type CompanySettings } from "@shared/schema";
 
 interface Analytics {
   sales: { total: number; count: number };
@@ -107,6 +108,9 @@ export default function ManagerDashboard() {
     queryKey: ['/api/inventory/low-stock']
   });
 
+  const { data: settings } = useQuery<CompanySettings>({ queryKey: ['/api/settings/company'] });
+  const companyName = settings?.name || "Highway Cafe";
+
   // Print barcodes for all products
   const printBarcodes = () => {
     const barcodeWindow = window.open('', '_blank');
@@ -122,7 +126,7 @@ export default function ManagerDashboard() {
     const barcodeHTML = `
       <html>
         <head>
-          <title>Product Barcodes - Highway Cafe</title>
+          <title>Product Barcodes - {companyName}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
             .barcode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
@@ -134,7 +138,7 @@ export default function ManagerDashboard() {
           </style>
         </head>
         <body>
-          <h1>Product Barcodes - Highway Cafe</h1>
+          <h1>Product Barcodes - {companyName}</h1>
           <p>Generated on: ${new Date().toLocaleString()}</p>
           <div class="barcode-grid">
             <!-- Barcodes would be generated here with real product data -->
@@ -175,7 +179,7 @@ export default function ManagerDashboard() {
     const reportHTML = `
       <html>
         <head>
-          <title>Inventory Report - Highway Cafe</title>
+          <title>Inventory Report - {companyName}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             .header { text-align: center; margin-bottom: 30px; }
@@ -190,7 +194,7 @@ export default function ManagerDashboard() {
         </head>
         <body>
           <div class="header">
-            <h1>Highway Cafe - Inventory Report</h1>
+            <h1>{companyName} - Inventory Report</h1>
             <p>Generated on: ${new Date().toLocaleString()}</p>
           </div>
           
@@ -255,7 +259,7 @@ export default function ManagerDashboard() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-neutral">Manager Dashboard</h1>
-              <p className="text-sm text-gray-600">Highway Cafe Management</p>
+              <p className="text-sm text-gray-600">{companyName} Management</p>
             </div>
           </div>
 
