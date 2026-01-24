@@ -73,7 +73,8 @@ router.post('/login', authRateLimiter, async (req: any, res) => {
             role: dbUser.role,
             firstName: dbUser.firstName || '',
             lastName: dbUser.lastName || '',
-            email: dbUser.email || `${dbUser.role}@company.com`
+            email: dbUser.email || `${dbUser.role}@company.com`,
+            organizationId: dbUser.organizationId
         };
 
         // Create new session with user data

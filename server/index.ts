@@ -77,6 +77,7 @@ import { serveStatic } from "./static-server";
   });
 
   // Start periodic job to auto-archive barista 'ready' orders after configured minutes
+  /*
   const AUTO_ARCHIVE_MINUTES = parseInt(process.env.AUTO_ARCHIVE_MINUTES || '10', 10);
   setInterval(async () => {
     try {
@@ -93,4 +94,5 @@ import { serveStatic } from "./static-server";
       console.error('Error during periodic archive job:', err);
     }
   }, 60 * 1000); // every 1 minute
+  */
 })();

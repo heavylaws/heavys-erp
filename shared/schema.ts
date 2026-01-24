@@ -27,12 +27,22 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
+// Organizations table (Multi-tenancy root)
+export const organizations = pgTable("organizations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  slug: varchar("slug", { length: 50 }).unique().notNull(), // for subdomains or URL paths
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // User roles enum
 export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'cashier', 'warehouse', 'technician', 'sales', 'barista', 'courier']);
 
 // User storage table (required for Replit Auth)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id), // Nullable for system admins or pre-migration
   username: varchar("username", { length: 50 }).unique().notNull(),
   password: varchar("password", { length: 255 }).notNull(), // In production, this should be hashed
   email: varchar("email").unique(),
@@ -44,16 +54,21 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_users_org").on(table.organizationId),
+]);
 
 // Product categories
 export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
   icon: varchar("icon", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_categories_org").on(table.organizationId),
+]);
 
 // Product types enum
 export const productTypeEnum = pgEnum('product_type', ['finished_good', 'ingredient_based']);
@@ -61,6 +76,7 @@ export const productTypeEnum = pgEnum('product_type', ['finished_good', 'ingredi
 // Products table
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 200 }).notNull(),
   description: text("description"),
   barcode: varchar("barcode", { length: 100 }),
@@ -87,13 +103,16 @@ export const products = pgTable("products", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_products_org").on(table.organizationId),
+]);
 
 // Product barcodes (multiple barcodes support)
 export const productBarcodes = pgTable("product_barcodes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Implicitly bound to organization via productId, but could add direct link if needed for faster lookups
   productId: varchar("product_id").references(() => products.id, { onDelete: "cascade" }).notNull(),
-  barcode: varchar("barcode", { length: 100 }).notNull().unique(),
+  barcode: varchar("barcode", { length: 100 }).notNull().unique(), // Unique globally? Or per org? Ideally per org, but barcodes are universal usually.
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_product_barcodes_product_id").on(table.productId),
@@ -102,13 +121,16 @@ export const productBarcodes = pgTable("product_barcodes", {
 // Favorite combos (quick order sets)
 export const favoriteCombos = pgTable("favorite_combos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 150 }).notNull(),
   description: text("description"),
   displayOrder: integer("display_order").default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_fav_combos_org").on(table.organizationId),
+]);
 
 export const favoriteComboItems = pgTable("favorite_combo_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -125,13 +147,16 @@ export const favoriteComboItems = pgTable("favorite_combo_items", {
 // Receipt settings table
 export const receiptSettings = pgTable("receipt_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   businessName: varchar("business_name", { length: 255 }).notNull().default('Heavy\'s Hardware'),
   address: varchar("address", { length: 255 }).default(''),
   phone: varchar("phone", { length: 50 }).default(''),
   headerText: text("header_text").default('Receipt'),
   footerText: text("footer_text").default('Thank you for your business!'),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_receipt_settings_org").on(table.organizationId),
+]);
 
 export const insertReceiptSettingsSchema = createInsertSchema(receiptSettings);
 export const selectReceiptSettingsSchema = createInsertSchema(receiptSettings); // Using insert schema for consistent loose validation on updates
@@ -141,6 +166,7 @@ export type ReceiptSettings = z.infer<typeof selectReceiptSettingsSchema>;
 // Ingredients table
 export const ingredients = pgTable("ingredients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 200 }).notNull(),
   unit: varchar("unit", { length: 50 }).notNull(), // ml, g, pieces, etc.
   stockQuantity: decimal("stock_quantity", { precision: 10, scale: 3 }).notNull().default('0'),
@@ -149,7 +175,9 @@ export const ingredients = pgTable("ingredients", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_ingredients_org").on(table.organizationId),
+]);
 
 // Recipe ingredients (for ingredient-based products)
 export const recipeIngredients = pgTable("recipe_ingredients", {
@@ -183,6 +211,7 @@ export const orderStatusEnum = pgEnum('order_status', ['pending', 'preparing', '
 // Orders table
 export const orders = pgTable("orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   orderNumber: integer("order_number").notNull(),
   customerId: varchar("customer_id"),
   customerName: varchar("customer_name"),
@@ -203,7 +232,9 @@ export const orders = pgTable("orders", {
   updatedAt: timestamp("updated_at").defaultNow(),
   readyAt: timestamp("ready_at"),
   deliveredAt: timestamp("delivered_at"),
-});
+}, (table) => [
+  index("idx_orders_org").on(table.organizationId),
+]);
 
 // Order items table
 export const orderItems = pgTable("order_items", {
@@ -220,6 +251,7 @@ export const orderItems = pgTable("order_items", {
 // Inventory log table
 export const inventoryLog = pgTable("inventory_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   type: varchar("type", { length: 50 }).notNull(), // 'product' or 'ingredient'
   itemId: varchar("item_id").notNull(), // productId or ingredientId
   action: varchar("action", { length: 50 }).notNull(), // 'sale', 'restock', 'adjustment'
@@ -230,21 +262,27 @@ export const inventoryLog = pgTable("inventory_log", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_inventory_log_org").on(table.organizationId),
+]);
 
 // Activity log table for admin and system operations (e.g., backup/restore)
 export const activityLog = pgTable("activity_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   userId: varchar("user_id").references(() => users.id).notNull(),
   action: varchar("action", { length: 100 }).notNull(), // e.g., 'db_backup', 'db_restore'
   success: boolean("success").notNull().default(true),
   details: jsonb("details"), // optional metadata
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_activity_log_org").on(table.organizationId),
+]);
 
 // Performance metrics for gamification
 export const performanceMetrics = pgTable("performance_metrics", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   userId: varchar("user_id").references(() => users.id).notNull(),
   month: integer("month").notNull(), // 1-12
   year: integer("year").notNull(),
@@ -260,7 +298,9 @@ export const performanceMetrics = pgTable("performance_metrics", {
   rank: integer("rank").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_perf_metrics_org").on(table.organizationId),
+]);
 
 // Achievement types enum
 export const achievementTypeEnum = pgEnum('achievement_type', ['first_order', 'speed_demon', 'sales_champion', 'customer_favorite', 'upsell_master', 'accuracy_ace', 'tutorial_graduate', 'monthly_winner']);
@@ -268,6 +308,7 @@ export const achievementTypeEnum = pgEnum('achievement_type', ['first_order', 's
 // Achievements table
 export const achievements = pgTable("achievements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description").notNull(),
   type: achievementTypeEnum("type").notNull(),
@@ -276,7 +317,9 @@ export const achievements = pgTable("achievements", {
   points: integer("points").notNull().default(10),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_achievements_org").on(table.organizationId),
+]);
 
 // User achievements (earned achievements)
 export const userAchievements = pgTable("user_achievements", {
@@ -290,6 +333,7 @@ export const userAchievements = pgTable("user_achievements", {
 // Monthly leaderboard
 export const monthlyLeaderboard = pgTable("monthly_leaderboard", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   month: integer("month").notNull(),
   year: integer("year").notNull(),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -298,11 +342,14 @@ export const monthlyLeaderboard = pgTable("monthly_leaderboard", {
   totalOrders: integer("total_orders").notNull(),
   totalSales: decimal("total_sales", { precision: 12, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_leaderboard_org").on(table.organizationId),
+]);
 
 // Shifts table for tracking employee work sessions
 export const shifts = pgTable("shifts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   userId: varchar("user_id").references(() => users.id).notNull(),
   startTime: timestamp("start_time").notNull().defaultNow(),
   endTime: timestamp("end_time"),
@@ -314,11 +361,14 @@ export const shifts = pgTable("shifts", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_shifts_org").on(table.organizationId),
+]);
 
 // Currency exchange rates table
 export const currencyRates = pgTable("currency_rates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   fromCurrency: varchar("base_currency", { length: 3 }).notNull().default('USD'),
   toCurrency: varchar("target_currency", { length: 3 }).notNull().default('LBP'),
   rate: decimal("rate", { precision: 15, scale: 6 }).notNull(),
@@ -326,7 +376,9 @@ export const currencyRates = pgTable("currency_rates", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_currency_rates_org").on(table.organizationId),
+]);
 
 // ---- Insert Schemas (core) ----
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
@@ -350,6 +402,7 @@ export const insertCurrencyRateSchema = createInsertSchema(currencyRates).omit({
 // ---- Option System Tables ----
 export const optionGroups = pgTable("option_groups", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 150 }).notNull(),
   description: text("description"),
   selectionType: varchar("selection_type", { length: 20 }).notNull().default('single'),
@@ -358,7 +411,9 @@ export const optionGroups = pgTable("option_groups", {
   required: boolean("required").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_option_groups_org").on(table.organizationId),
+]);
 export const productOptionGroups = pgTable("product_option_groups", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").references(() => products.id).notNull(),
@@ -486,6 +541,7 @@ export const serialNumberStatusEnum = pgEnum('serial_number_status', ['in_stock'
 // Suppliers table
 export const suppliers = pgTable("suppliers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 200 }).notNull(),
   code: varchar("code", { length: 50 }).unique(),
   contactPerson: varchar("contact_person", { length: 100 }),
@@ -498,7 +554,9 @@ export const suppliers = pgTable("suppliers", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_suppliers_org").on(table.organizationId),
+]);
 
 // Product-Supplier relationship
 export const productSuppliers = pgTable("product_suppliers", {
@@ -518,6 +576,7 @@ export const productSuppliers = pgTable("product_suppliers", {
 // Customers table (for B2B & warranty tracking)
 export const customers = pgTable("customers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   type: customerTypeEnum("type").notNull().default('retail'),
   name: varchar("name", { length: 200 }).notNull(),
   code: varchar("code", { length: 50 }).unique(),
@@ -533,11 +592,14 @@ export const customers = pgTable("customers", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_customers_org").on(table.organizationId),
+]);
 
 // Purchase Orders
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   orderNumber: varchar("order_number", { length: 50 }).unique().notNull(),
   supplierId: varchar("supplier_id").references(() => suppliers.id).notNull(),
   status: purchaseOrderStatusEnum("status").notNull().default('draft'),
@@ -553,6 +615,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
+  index("idx_purchase_orders_org").on(table.organizationId),
   index("idx_purchase_orders_supplier").on(table.supplierId),
   index("idx_purchase_orders_status").on(table.status),
 ]);
@@ -650,6 +713,7 @@ export type InsertSerialNumber = z.infer<typeof insertSerialNumberSchema>;
 // Company Settings table
 export const companySettings = pgTable("company_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 255 }).notNull().default("My Business"),
   address: text("address").default(""),
   phone: varchar("phone", { length: 50 }).default(""),
@@ -662,9 +726,71 @@ export const companySettings = pgTable("company_settings", {
   receiptHeader: text("receipt_header").default("Welcome!"),
   receiptFooter: text("receipt_footer").default("Thank you for your visit!"),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_company_settings_org").on(table.organizationId),
+]);
 
 export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, updatedAt: true });
 export const selectCompanySettingsSchema = createSelectSchema(companySettings);
 export type CompanySettings = z.infer<typeof selectCompanySettingsSchema>;
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
+
+// Quotations System
+export const quotes = pgTable("quotes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id),
+  customerId: varchar("customer_id").references(() => customers.id),
+  customerName: varchar("customer_name"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 50 }).default("draft").notNull(),
+  validUntil: timestamp("valid_until"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_quotes_org").on(table.organizationId),
+]);
+
+export const quoteItems = pgTable("quote_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quoteId: varchar("quote_id").references(() => quotes.id).notNull(),
+  productId: varchar("product_id").references(() => products.id).notNull(),
+  quantity: integer("quantity").notNull(),
+  priceAtQuote: decimal("price_at_quote", { precision: 10, scale: 2 }).notNull(),
+}, (table) => [
+  index("idx_quote_items_quote").on(table.quoteId),
+]);
+
+export const quotesRelations = relations(quotes, ({ one, many }) => ({
+  items: many(quoteItems),
+  customer: one(customers, {
+    fields: [quotes.customerId],
+    references: [customers.id],
+  }),
+}));
+
+export const quoteItemsRelations = relations(quoteItems, ({ one }) => ({
+  quote: one(quotes, {
+    fields: [quoteItems.quoteId],
+    references: [quotes.id],
+  }),
+  product: one(products, {
+    fields: [quoteItems.productId],
+    references: [products.id],
+  }),
+}));
+
+export const insertQuoteSchema = createInsertSchema(quotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertQuoteItemSchema = createInsertSchema(quoteItems).omit({
+  id: true
+});
+
+export type Quote = typeof quotes.$inferSelect;
+export type InsertQuote = z.infer<typeof insertQuoteSchema>;
+export type QuoteItem = typeof quoteItems.$inferSelect;
+export type InsertQuoteItem = z.infer<typeof insertQuoteItemSchema>;

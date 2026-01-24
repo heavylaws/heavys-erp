@@ -14,10 +14,11 @@ import { z } from 'zod';
 import { storage } from '../../storage';
 import { orderService } from '../../services/order.service';
 import { productService } from '../../services/product.service';
-import { isAuthenticated, isAdmin } from '../../auth-middleware';
+import { isAuthenticated, checkPermission } from '../../auth-middleware';
 import { broadcastOrderUpdate, broadcast } from '../../services/websocket';
 import { insertFavoriteComboSchema, insertOrderSchema, insertOrderItemSchema } from '@shared/schema';
 import { ENABLE_OPTIONS_SYSTEM } from '@shared/feature-flags';
+import { AuthPolicy } from '../../services/auth.policy';
 
 const router = Router();
 
@@ -50,7 +51,7 @@ const favoriteComboUpdateSchema = insertFavoriteComboSchema
  * GET /api/orders
  * List orders with optional filters
  */
-router.get('/', isAuthenticated, async (req, res) => {
+router.get('/', isAuthenticated, checkPermission('order:read'), async (req, res) => {
     try {
         const { status, limit, sentToBarista, include_items } = req.query as any;
         let orders;
@@ -58,12 +59,12 @@ router.get('/', isAuthenticated, async (req, res) => {
         if (status) {
             // If include_items is set, use the optimized endpoint that returns items inline
             if (include_items === 'true') {
-                orders = await orderService.getOrdersByStatusWithItems(status as string);
+                orders = await orderService.getOrdersByStatusWithItems(req.session.user.organizationId, status as string);
             } else {
-                orders = await orderService.getOrdersByStatus(status as string);
+                orders = await orderService.getOrdersByStatus(req.session.user.organizationId, status as string);
             }
         } else {
-            orders = await orderService.getOrders(limit ? parseInt(limit as string) : undefined);
+            orders = await orderService.getOrders(req.session.user.organizationId, limit ? parseInt(limit as string) : undefined);
         }
 
         // Optional filter: only orders explicitly sent to barista
@@ -88,10 +89,10 @@ router.get('/', isAuthenticated, async (req, res) => {
  * GET /api/orders/:id
  * Get single order details
  */
-router.get('/:id', isAuthenticated, async (req: any, res) => {
+router.get('/:id', isAuthenticated, checkPermission('order:read'), async (req: any, res) => {
     try {
         const { id } = req.params;
-        const order = await orderService.getOrderWithDetails(id);
+        const order = await orderService.getOrderWithDetails(req.session.user.organizationId, id);
         if (!order) {
             return res.status(404).json({ message: "Order not found" });
         }
@@ -106,10 +107,10 @@ router.get('/:id', isAuthenticated, async (req: any, res) => {
  * GET /api/orders/:id/items
  * Get items for a specific order
  */
-router.get('/:id/items', isAuthenticated, async (req, res) => {
+router.get('/:id/items', isAuthenticated, checkPermission('order:read'), async (req, res) => {
     try {
         const { id } = req.params;
-        const items = await orderService.getOrderItems(id);
+        const items = await orderService.getOrderItems(req.session.user.organizationId, id);
         res.json(items);
     } catch (error) {
         console.error("Error fetching order items:", error);
@@ -121,12 +122,9 @@ router.get('/:id/items', isAuthenticated, async (req, res) => {
  * POST /api/orders
  * Create new order
  */
-router.post('/', isAuthenticated, async (req: any, res) => {
+router.post('/', isAuthenticated, checkPermission('order:create'), async (req: any, res) => {
     try {
         const user = req.session.user;
-        if (!user || !['admin', 'manager', 'cashier', 'courier'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
 
         // Handle both old format (with separate order/items) and new format (all in one)
         let orderData, items;
@@ -140,7 +138,7 @@ router.post('/', isAuthenticated, async (req: any, res) => {
         }
 
         // Get next order number
-        const orderNumber = await orderService.getNextOrderNumber();
+        const orderNumber = await orderService.getNextOrderNumber(user.organizationId);
 
         // Calculate subtotal from items (including selected option price adjustments if flag enabled)
         let subtotal = 0;
@@ -233,13 +231,19 @@ router.post('/', isAuthenticated, async (req: any, res) => {
             courierId: user.role === 'courier' ? user.id : undefined
         };
 
-        if (orderWithNumber.sentToBarista && !['admin', 'manager', 'cashier'].includes(user.role)) {
-            return res.status(403).json({ message: 'Insufficient permissions to send order to barista' });
+        if (orderWithNumber.sentToBarista) {
+            // Logic for sending to barista, check if user is allowed beyond just general order management
+            // We use specific permission check or role check if needed contextually
+            // Assuming order:create implies basic rights, but sentToBarista might be special
+            // Keeping original logic via policy or inline
+            if (!AuthPolicy.canAny(user, ['order:manage', 'order:create'])) {
+                return res.status(403).json({ message: 'Insufficient permissions to send order to barista' });
+            }
         }
 
         let order;
         try {
-            order = await orderService.createOrderTransaction(orderWithNumber, items, user.id);
+            order = await orderService.createOrderTransaction(user.organizationId, orderWithNumber, items, user.id);
         } catch (err) {
             console.error('Order transaction failed:', err);
             if (err && (err as Error).message && (err as Error).message.includes('Insufficient')) {
@@ -260,19 +264,18 @@ router.post('/', isAuthenticated, async (req: any, res) => {
  * PATCH /api/orders/:id
  * Update order status and details
  */
-router.patch('/:id', isAuthenticated, async (req: any, res) => {
+router.patch('/:id', isAuthenticated, checkPermission('order:update'), async (req: any, res) => {
     try {
         const user = req.session.user;
-        if (!user) {
-            return res.status(403).json({ message: "Unauthorized" });
-        }
-
         const { id } = req.params;
         const updateData = req.body;
 
         // Only allow marking sentToBarista by cashier/manager/admin roles
         if (typeof updateData.sentToBarista !== 'undefined' && updateData.sentToBarista === true) {
-            if (!['admin', 'manager', 'cashier'].includes(user.role)) {
+            // Using logic: Casher/Manager/Admin have 'order:create' or 'order:manage'. 
+            // Barista (order:update) should not trigger this?
+            // AuthPolicy check:
+            if (!AuthPolicy.canAny(user, ['order:create', 'order:manage'])) {
                 return res.status(403).json({ message: 'Insufficient permissions to send order to barista' });
             }
         }
@@ -291,12 +294,9 @@ router.patch('/:id', isAuthenticated, async (req: any, res) => {
             updateData.courierId = user.id;
         }
 
-        const order = await orderService.updateOrder(id, updateData);
+        const order = await orderService.updateOrder(user.organizationId, id, updateData);
 
         if (typeof updateData.sentToBarista !== 'undefined' && updateData.sentToBarista === true) {
-            // Activity log for now on storage, or should move to ActivityService?
-            // storage.createActivityLog is used. storage.ts has it.
-            // I'll keep storage for ActivityLog for now as it's not migrated.
             try {
                 await storage.createActivityLog({
                     userId: user.id,
@@ -321,18 +321,13 @@ router.patch('/:id', isAuthenticated, async (req: any, res) => {
  * PUT /api/orders/:id
  * Complete update of order and items
  */
-router.put('/:id', isAuthenticated, async (req: any, res) => {
+router.put('/:id', isAuthenticated, checkPermission('order:update'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user) {
-            return res.status(403).json({ message: "Unauthorized" });
-        }
-
         const { id } = req.params;
         const { order: orderData, items } = req.body;
 
         // Update the order
-        const updatedOrder = await orderService.updateOrder(id, orderData);
+        const updatedOrder = await orderService.updateOrder(req.session.user.organizationId, id, orderData);
 
         // If items are provided, update them too
         if (items && Array.isArray(items)) {
@@ -364,20 +359,12 @@ router.put('/:id', isAuthenticated, async (req: any, res) => {
  * DELETE /api/orders/:id
  * Delete order (Admin/Cashier only)
  */
-router.delete('/:id', isAuthenticated, async (req: any, res) => {
+router.delete('/:id', isAuthenticated, checkPermission('order:delete'), async (req: any, res) => {
     try {
         const user = req.session.user;
         const { id } = req.params;
 
-        if (!user) {
-            return res.status(401).json({ message: "User not found" });
-        }
-
-        if (!['admin', 'cashier'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions to delete orders" });
-        }
-
-        await orderService.deleteOrder(id);
+        await orderService.deleteOrder(user.organizationId, id);
 
         broadcast({
             type: 'order_deleted',
@@ -395,14 +382,11 @@ router.delete('/:id', isAuthenticated, async (req: any, res) => {
  * POST /api/orders/:id/call
  * Notification: Customer called
  */
-router.post('/:id/call', isAuthenticated, async (req: any, res) => {
+router.post('/:id/call', isAuthenticated, checkPermission('order:update'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user) return res.status(401).json({ message: "Unauthorized" });
-
         const { id } = req.params;
         const updateData: any = { calledAt: new Date(), status: 'ready' };
-        const updated = await orderService.updateOrder(id, updateData);
+        const updated = await orderService.updateOrder(req.session.user.organizationId, id, updateData);
         broadcastOrderUpdate(updated);
         res.json(updated);
     } catch (error) {
@@ -417,7 +401,7 @@ router.post('/:id/call', isAuthenticated, async (req: any, res) => {
  * GET /api/favorites
  * Get favorite combos
  */
-router.get('/favorites', isAuthenticated, async (req: any, res) => {
+router.get('/favorites', isAuthenticated, checkPermission('product:read'), async (req: any, res) => {
     try {
         const isAdminUser = req.session?.user?.role === 'admin';
         const includeInactive = req.query.includeInactive === 'true' && isAdminUser;
@@ -433,7 +417,7 @@ router.get('/favorites', isAuthenticated, async (req: any, res) => {
  * POST /api/favorites
  * Create favorite combo (Admin only)
  */
-router.post('/favorites', isAuthenticated, isAdmin, async (req: any, res) => {
+router.post('/favorites', isAuthenticated, checkPermission('product:manage'), async (req: any, res) => {
     try {
         const payload = favoriteComboCreateSchema.parse(req.body);
         const { items, ...comboData } = payload;
@@ -452,7 +436,7 @@ router.post('/favorites', isAuthenticated, isAdmin, async (req: any, res) => {
  * PUT /api/favorites/:id
  * Update favorite combo (Admin only)
  */
-router.put('/favorites/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+router.put('/favorites/:id', isAuthenticated, checkPermission('product:manage'), async (req: any, res) => {
     try {
         const payload = favoriteComboUpdateSchema.parse(req.body);
         const { items, ...comboData } = payload;
@@ -471,7 +455,7 @@ router.put('/favorites/:id', isAuthenticated, isAdmin, async (req: any, res) => 
  * DELETE /api/favorites/:id
  * Delete favorite combo (Admin only)
  */
-router.delete('/favorites/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+router.delete('/favorites/:id', isAuthenticated, checkPermission('product:manage'), async (req: any, res) => {
     try {
         await storage.deleteFavoriteCombo(req.params.id);
         res.status(204).end();

@@ -41,13 +41,13 @@ const addProductSchema = z.object({
   description: z.string().optional(),
   barcode: z.string().optional(),
   barcodes: z.array(z.string()).default([]),
-  price: z.string().min(1, "Selling price is required"),
-  costPerUnit: z.string().optional(),
+  price: z.coerce.number().min(0.01, "Selling price is required and must be greater than 0"),
+  costPerUnit: z.coerce.number().optional(),
   profitMargin: z.string().default("25"),
   categoryId: z.string().min(1, "Category is required"),
   type: z.enum(["finished_good", "ingredient_based"]).default("finished_good"),
-  stockQuantity: z.number().min(0, "Stock quantity must be 0 or greater").default(0),
-  minThreshold: z.number().min(0, "Minimum threshold must be 0 or greater").default(5),
+  stockQuantity: z.coerce.number().min(0, "Stock quantity must be 0 or greater").default(0),
+  minThreshold: z.coerce.number().min(0, "Minimum threshold must be 0 or greater").default(5),
   forBarista: z.boolean().default(false),
 });
 
@@ -78,8 +78,8 @@ export function AddProductDialog({
       description: "",
       barcode: "",
       barcodes: [],
-      price: "",
-      costPerUnit: "",
+      price: 0,
+      costPerUnit: 0,
       profitMargin: "25",
       categoryId: "",
       type: "finished_good",
@@ -89,12 +89,33 @@ export function AddProductDialog({
     },
   });
 
+  // Prevent implicit submission on Enter key (standard for barcode scanners)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      // Check if the target is the temporary barcode input, which HAS its own handler
+      // We don't want to double-block it if it's already handled, but purely blocking form submit is specific
+      // The scanner usually sends 'Enter' at the end of a scan.
+      // If we are in the barcode field, we want that specific logic (add tag).
+      // If we are in 'Name' or 'Price', we do NOT want to submit the form.
+
+      const target = e.target as HTMLElement;
+      // Allow Enter on Textareas
+      if (target.tagName === "TEXTAREA") return;
+
+      // Allow Enter on Buttons (accessibility)
+      if (target.tagName === "BUTTON") return;
+
+      // For all other inputs (text, number), prevent default form submission
+      e.preventDefault();
+    }
+  };
+
   // Watch cost and margin to auto-calculate price
   const watchCost = form.watch("costPerUnit");
   const watchMargin = form.watch("profitMargin");
 
-  const calculatePrice = (cost: string, margin: string) => {
-    const costNum = parseFloat(cost) || 0;
+  const calculatePrice = (cost: number | undefined, margin: string) => {
+    const costNum = cost || 0;
     const marginNum = parseFloat(margin) || 0;
     if (costNum > 0) {
       return (costNum * (1 + marginNum / 100)).toFixed(2);
@@ -103,9 +124,9 @@ export function AddProductDialog({
   };
 
   const autoCalcPrice = () => {
-    const calculated = calculatePrice(watchCost || "", watchMargin || "25");
+    const calculated = calculatePrice(watchCost, watchMargin || "25");
     if (calculated) {
-      form.setValue("price", calculated);
+      form.setValue("price", parseFloat(calculated));
     }
   };
 
@@ -117,7 +138,14 @@ export function AddProductDialog({
   // Create product mutation
   const createProductMutation = useMutation({
     mutationFn: async (data: AddProductForm) => {
-      const response = await apiRequest("POST", "/api/products", data);
+      // Ensure specific transforms if needed (e.g. string to number) - zod handles coerce now
+      const payload = {
+        ...data,
+        // The server expects strings for decimals often in this app? 
+        // Let's check schema.ts. Usually 'decimal' in postgres is returned as string, but accepted as number/string in JSON.
+        // Let's send as is, zod coerced them to numbers.
+      };
+      const response = await apiRequest("POST", "/api/products", payload);
       return response.json();
     },
     onSuccess: (newProduct: any) => {
@@ -174,7 +202,7 @@ export function AddProductDialog({
 
         <ScrollArea className="flex-1 pr-4 -mr-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -443,7 +471,6 @@ export function AddProductDialog({
                           type="number"
                           min="0"
                           {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -462,7 +489,6 @@ export function AddProductDialog({
                           type="number"
                           min="0"
                           {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
                         />
                       </FormControl>
                       <FormMessage />

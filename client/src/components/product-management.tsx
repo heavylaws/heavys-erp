@@ -133,230 +133,224 @@ export function ProductManagement() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Package className="h-5 w-5" />
-            <span>Product Management</span>
-          </div>
-          <AddProductDialog>
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          </AddProductDialog>
-        </CardTitle>
+    <div className="space-y-6 animate-fade-in-up">
+      {/* Header & Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-800 to-gray-600">Product Inventory</h2>
+          <p className="text-gray-500 text-sm">Manage your catalog, prices, and stock levels</p>
+        </div>
+        <AddProductDialog>
+          <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-105">
+            <Plus className="h-4 w-4 mr-2" />
+            Add New Product
+          </Button>
+        </AddProductDialog>
+      </div>
 
-        {/* Smart Search */}
-        <div className="mt-4">
-          <Label htmlFor="product-search">Search Products</Label>
-          <div className="relative mt-2">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+      {/* Modern Search Bar */}
+      <Card className="glass-card border-none shadow-sm">
+        <CardContent className="p-4 flex items-center gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
             <Input
-              id="product-search"
-              placeholder="Search by name, description, or barcode..."
+              placeholder="Search products by name, barcode, or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-              data-testid="input-product-search"
+              className="pl-12 h-12 bg-white/50 border-gray-100 focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10 transition-all rounded-xl text-lg"
             />
             {searchTerm && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                data-testid="button-clear-product-search"
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                <X className="h-4 w-4" />
-              </Button>
+                <X className="h-5 w-5" />
+              </button>
             )}
           </div>
-          {searchTerm && (
-            <div className="mt-2">
-              <Badge variant="outline" className="bg-blue-50">
-                Showing {products.length} of {allProducts.length} products
-              </Badge>
-            </div>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {products.length === 0 ? (
-          <div className="text-center py-8">
-            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">
-              {searchTerm ? 'No products match your search' : 'No products found'}
-            </p>
-            {!searchTerm && (
-              <AddProductDialog>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Product
-                </Button>
-              </AddProductDialog>
-            )}
+          {/* Future Filter Chips can go here */}
+          <div className="hidden md:flex gap-2">
+            <Badge variant="outline" className="h-10 px-4 rounded-lg cursor-pointer hover:bg-white hover:border-blue-200 transition-colors">
+              All Categories
+            </Badge>
+            <Badge variant="outline" className="h-10 px-4 rounded-lg cursor-pointer hover:bg-white hover:border-blue-200 transition-colors">
+              Stock Status
+            </Badge>
           </div>
-        ) : (
+        </CardContent>
+      </Card>
+
+      {/* Main Table Card */}
+      <Card className="glass-card border-none shadow-xl overflow-hidden">
+        <CardContent className="p-0">
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
+            <TableHeader className="bg-gray-50/50">
+              <TableRow className="hover:bg-transparent border-gray-100">
+                <TableHead className="w-[80px] pl-6">Image</TableHead>
+                <TableHead>Product Details</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Price</TableHead>
-                <TableHead>Stock</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Stock Status</TableHead>
+                <TableHead className="text-right pr-6">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell>
-                    <div className="cursor-pointer" onClick={() => setExpandedProduct(expandedProduct === product.id ? null : product.id)}>
-                      <div className="font-medium flex items-center gap-2">
-                        <span>{product.name}</span>
-                        {expandedProduct === product.id && <span className="text-xs text-blue-600">(collapse)</span>}
-                      </div>
-                      {product.description && (
-                        <div className="text-sm text-gray-500">{product.description}</div>
-                      )}
-                      {expandedProduct === product.id && (product as any).optionGroups && (
-                        <div className="mt-2 space-y-2">
-                          <div className="text-xs font-semibold text-gray-600">Attached Option Groups:</div>
-                          <ul className="space-y-1">
-                            {(product as any).optionGroups.map((g: any) => (
-                              <li key={g.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium">{g.name}</span>
-                                  {g.required && <span className="text-[10px] bg-red-100 text-red-600 px-1 rounded">req</span>}
-                                  <span className="text-[10px] text-gray-500">{g.selectionType}</span>
-                                </div>
-                                <Button size="sm" variant="ghost" onClick={() => {
-                                  const mapping = (product as any).optionGroupsRaw?.find((m: any) => m.group.id === g.id) || (product as any).optionGroupsMapping?.find((m: any) => m.optionGroupId === g.id);
-                                  if (mapping) detachMutation.mutate({ mappingId: mapping.id });
-                                }}>Remove</Button>
-                              </li>
-                            ))}
-                            {!(product as any).optionGroups.length && <li className="text-xs text-gray-500">None attached</li>}
-                          </ul>
-                          <div className="flex items-center gap-2 mt-2">
-                            <select className="border rounded px-2 py-1 text-sm" defaultValue="" onChange={(e) => { const val = e.target.value; if (val) { attachMutation.mutate({ productId: product.id, optionGroupId: val }); e.target.value = ''; } }}>
-                              <option value="" disabled>Add group…</option>
-                              {optionGroups.filter((og: any) => !(product as any).optionGroups?.some((pg: any) => pg.id === og.id)).map((og: any) => (
-                                <option key={og.id} value={og.id}>{og.name}</option>
-                              ))}
-                            </select>
-                            {attachMutation.isPending && <span className="text-xs text-gray-500">Attaching…</span>}
-                            {detachMutation.isPending && <span className="text-xs text-gray-500">Detaching…</span>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{getCategoryName(product.categoryId)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={product.type === 'finished_good' ? 'default' : 'secondary'}>
-                      {product.type === 'finished_good' ? 'Finished Good' : 'Recipe-Based'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>${parseFloat(product.price).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center space-x-2">
-                      <span>
-                        {product.type === 'finished_good'
-                          ? Math.floor(Number(product.stockQuantity))
-                          : Number(product.stockQuantity).toLocaleString(undefined, { maximumFractionDigits: 3 })}
-                      </span>
-                      <span className="text-gray-400">/ {product.minThreshold}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {getStockStatusBadge(Number(product.stockQuantity), Number(product.minThreshold))}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end space-x-2">
-                      <RestockDialog
-                        item={{
-                          id: product.id,
-                          name: product.name,
-                          stockQuantity: product.stockQuantity,
-
-                          type: 'product',
-                          productType: product.type
-                        }}
-                      >
-                        <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700">
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </RestockDialog>
-
-                      <StockAdjustmentDialog
-                        item={{
-                          id: product.id,
-                          name: product.name,
-                          stockQuantity: product.stockQuantity,
-
-                          type: 'product',
-                          productType: product.type
-                        }}
-                      >
-                        <Button variant="ghost" size="sm">
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                      </StockAdjustmentDialog>
-
-                      {product.type === 'ingredient_based' && (
-                        <RecipeManager productId={product.id} productName={product.name} trigger={
-                          <Button variant="ghost" size="sm">
-                            <ChefHat className="h-4 w-4" />
-                          </Button>
-                        } />
-                      )}
-
-                      <EditProductDialog product={product}>
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </EditProductDialog>
-
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Product</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete "{product.name}"? This action cannot be undone.
-                              This will deactivate the product from sales.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteProductMutation.mutate(product.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+              {products.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-64 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-400">
+                      <Package className="h-12 w-12 mb-4 opacity-20" />
+                      <p className="text-lg font-medium text-gray-500">No products found</p>
+                      <p className="text-sm">Try adjusting your search or add a new product</p>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                products.map((product) => (
+                  <TableRow key={product.id} className="hover:bg-slate-50/80 transition-colors border-gray-100 group">
+                    <TableCell className="pl-6">
+                      <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-gray-200 shadow-sm">
+                        <Package className="h-6 w-6" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="cursor-pointer" onClick={() => setExpandedProduct(expandedProduct === product.id ? null : product.id)}>
+                        <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                          {product.name}
+                          {expandedProduct === product.id && <Settings className="h-3 w-3 text-blue-500 animate-spin-slow" />}
+                        </h4>
+                        <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                          <span>SKU: {product.barcode || 'N/A'}</span>
+                          {product.description && <span className="w-1 h-1 bg-gray-300 rounded-full"></span>}
+                          {product.description && <span className="truncate max-w-[200px]">{product.description}</span>}
+                        </div>
+
+                        {expandedProduct === product.id && (product as any).optionGroups && (
+                          <div className="mt-4 p-4 bg-slate-50/80 rounded-xl border border-blue-100 shadow-inner">
+                            <div className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2">Attached Options</div>
+                            <ul className="space-y-2 mb-3">
+                              {(product as any).optionGroups.map((g: any) => (
+                                <li key={g.id} className="flex items-center justify-between bg-white rounded-lg border border-blue-100 px-3 py-2 shadow-sm">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-none">{g.name}</Badge>
+                                    {g.required && <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">REQUIRED</span>}
+                                    <span className="text-[10px] text-gray-500 font-mono">{g.selectionType}</span>
+                                  </div>
+                                  <Button size="sm" variant="ghost" className="h-6 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => {
+                                    const mapping = (product as any).optionGroupsRaw?.find((m: any) => m.group.id === g.id) || (product as any).optionGroupsMapping?.find((m: any) => m.optionGroupId === g.id);
+                                    if (mapping) detachMutation.mutate({ mappingId: mapping.id });
+                                  }}>Detach</Button>
+                                </li>
+                              ))}
+                              {!(product as any).optionGroups.length && <li className="text-xs text-gray-400 italic">No options attached</li>}
+                            </ul>
+                            <div className="flex items-center gap-2">
+                              <select
+                                className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                defaultValue=""
+                                onChange={(e) => { const val = e.target.value; if (val) { attachMutation.mutate({ productId: product.id, optionGroupId: val }); e.target.value = ''; } }}
+                              >
+                                <option value="" disabled>Link new option group...</option>
+                                {optionGroups.filter((og: any) => !(product as any).optionGroups?.some((pg: any) => pg.id === og.id)).map((og: any) => (
+                                  <option key={og.id} value={og.id}>{og.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="bg-gray-100 text-gray-600 hover:bg-gray-200">
+                        {getCategoryName(product.categoryId)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {product.type === 'finished_good' ? (
+                          <div className="h-2 w-2 rounded-full bg-emerald-400"></div>
+                        ) : (
+                          <div className="h-2 w-2 rounded-full bg-amber-400"></div>
+                        )}
+                        <span className="text-sm font-medium text-gray-600">
+                          {product.type === 'finished_good' ? 'Finished' : 'Recipe'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-bold text-gray-800 font-mono">${parseFloat(product.price).toFixed(2)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        {Number(product.stockQuantity) <= Number(product.minThreshold) ? (
+                          <Badge className="bg-red-100 text-red-700 hover:bg-red-200 border-none shadow-none">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 animate-pulse"></span>
+                            Low Stock ({Number(product.stockQuantity)})
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-none shadow-none">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span>
+                            In Stock ({Number(product.stockQuantity)})
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-gray-400 pl-2">Min: {product.minThreshold}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right pr-6">
+                      <div className="flex justify-end gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                        <RestockDialog item={{ id: product.id, name: product.name, stockQuantity: product.stockQuantity, type: 'product', productType: product.type }}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:bg-green-50 rounded-full" title="Restock">
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </RestockDialog>
+
+                        <StockAdjustmentDialog item={{ id: product.id, name: product.name, stockQuantity: product.stockQuantity, type: 'product', productType: product.type }}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-gray-600 hover:bg-gray-100 rounded-full" title="Adjust Stock">
+                            <Settings className="h-4 w-4" />
+                          </Button>
+                        </StockAdjustmentDialog>
+
+                        {product.type === 'ingredient_based' && (
+                          <RecipeManager productId={product.id} productName={product.name} trigger={
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 rounded-full" title="Manage Recipe">
+                              <ChefHat className="h-4 w-4" />
+                            </Button>
+                          } />
+                        )}
+
+                        <EditProductDialog product={product}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-full" title="Edit">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </EditProductDialog>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50 rounded-full" title="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Product?</AlertDialogTitle>
+                              <AlertDialogDescription>Are you sure? This action is irreversible.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteProductMutation.mutate(product.id)} className="bg-red-600">Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

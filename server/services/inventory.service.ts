@@ -7,8 +7,8 @@ import {
 import { eq, asc, and, sql } from "drizzle-orm";
 
 export class InventoryService {
-    async getIngredients(search?: string): Promise<Ingredient[]> {
-        const conditions: any[] = [eq(ingredients.isActive, true)];
+    async getIngredients(organizationId: string, search?: string): Promise<Ingredient[]> {
+        const conditions: any[] = [eq(ingredients.isActive, true), eq(ingredients.organizationId, organizationId)];
         if (search && search.trim().length > 0) {
             const term = `%${search.trim().toLowerCase()}%`;
             conditions.push(sql`lower(${ingredients.name}) like ${term}`);
@@ -23,28 +23,28 @@ export class InventoryService {
             .orderBy(asc(ingredients.name));
     }
 
-    async getIngredient(id: string): Promise<Ingredient | undefined> {
-        const [ingredient] = await db.select().from(ingredients).where(eq(ingredients.id, id));
+    async getIngredient(organizationId: string, id: string): Promise<Ingredient | undefined> {
+        const [ingredient] = await db.select().from(ingredients).where(and(eq(ingredients.id, id), eq(ingredients.organizationId, organizationId)));
         return ingredient;
     }
 
-    async createIngredient(ingredient: InsertIngredient): Promise<Ingredient> {
-        const [newIngredient] = await db.insert(ingredients).values(ingredient).returning();
+    async createIngredient(organizationId: string, ingredient: InsertIngredient): Promise<Ingredient> {
+        const [newIngredient] = await db.insert(ingredients).values({ ...ingredient, organizationId }).returning();
         return newIngredient;
     }
 
-    async updateIngredient(id: string, ingredient: Partial<InsertIngredient>): Promise<Ingredient> {
+    async updateIngredient(organizationId: string, id: string, ingredient: Partial<InsertIngredient>): Promise<Ingredient> {
         const [updatedIngredient] = await db
             .update(ingredients)
             .set({ ...ingredient, updatedAt: new Date() })
-            .where(eq(ingredients.id, id))
+            .where(and(eq(ingredients.id, id), eq(ingredients.organizationId, organizationId)))
             .returning();
         return updatedIngredient;
     }
 
-    async deleteIngredient(id: string): Promise<void> {
+    async deleteIngredient(organizationId: string, id: string): Promise<void> {
         try {
-            const result = await db.update(ingredients).set({ isActive: false }).where(eq(ingredients.id, id));
+            const result = await db.update(ingredients).set({ isActive: false }).where(and(eq(ingredients.id, id), eq(ingredients.organizationId, organizationId)));
             if (!result.rowCount || result.rowCount === 0) {
                 throw new Error('Ingredient not found');
             }
@@ -54,8 +54,8 @@ export class InventoryService {
         }
     }
 
-    async updateIngredientStock(id: string, quantityChange: number, userId: string, reason: string): Promise<void> {
-        const [ingredient] = await db.select().from(ingredients).where(eq(ingredients.id, id));
+    async updateIngredientStock(organizationId: string, id: string, quantityChange: number, userId: string, reason: string): Promise<void> {
+        const [ingredient] = await db.select().from(ingredients).where(and(eq(ingredients.id, id), eq(ingredients.organizationId, organizationId)));
         if (!ingredient) throw new Error('Ingredient not found');
 
         const currentQuantity = parseFloat(ingredient.stockQuantity);
@@ -65,9 +65,10 @@ export class InventoryService {
             await tx
                 .update(ingredients)
                 .set({ stockQuantity: String(newQuantity), updatedAt: new Date() })
-                .where(eq(ingredients.id, id));
+                .where(and(eq(ingredients.id, id), eq(ingredients.organizationId, organizationId)));
 
             await tx.insert(inventoryLog).values({
+                organizationId,
                 type: 'ingredient',
                 itemId: id,
                 action: quantityChange > 0 ? 'restock' : 'sale',
@@ -80,12 +81,13 @@ export class InventoryService {
         });
     }
 
-    async getLowStockIngredients(): Promise<Ingredient[]> {
+    async getLowStockIngredients(organizationId: string): Promise<Ingredient[]> {
         return db
             .select()
             .from(ingredients)
             .where(
                 and(
+                    eq(ingredients.organizationId, organizationId),
                     eq(ingredients.isActive, true),
                     sql`${ingredients.stockQuantity} <= ${ingredients.minThreshold}`
                 )

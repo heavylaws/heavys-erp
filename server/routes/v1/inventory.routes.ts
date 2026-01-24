@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { storage } from '../../storage';
 import { inventoryService } from '../../services/inventory.service';
 import { productService } from '../../services/product.service';
-import { isAuthenticated } from '../../auth-middleware';
+import { isAuthenticated, checkPermission } from '../../auth-middleware';
 import { insertIngredientSchema } from '@shared/schema';
 
 const router = Router();
@@ -21,22 +21,18 @@ const router = Router();
  * GET /api/inventory/low-stock
  * Get items (products and ingredients) with low stock levels
  */
-router.get('/low-stock', isAuthenticated, async (req: any, res) => {
+router.get('/low-stock', isAuthenticated, checkPermission('inventory:read'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
+        const organizationId = req.session.user.organizationId;
         const [products, ingredients] = await Promise.all([
-            productService.getLowStockProducts(),
-            inventoryService.getLowStockIngredients()
+            productService.getLowStockProducts(organizationId),
+            inventoryService.getLowStockIngredients(organizationId)
         ]);
 
         // Attach recipeIngredients for ingredient_based products
         const withRecipes = await Promise.all(products.map(async (p: any) => {
             if (p.type === 'ingredient_based') {
-                const recipeIngredients = await productService.getRecipeIngredients(p.id);
+                const recipeIngredients = await productService.getRecipeIngredients(organizationId, p.id);
                 return { ...p, recipeIngredients };
             }
             return p;
@@ -58,7 +54,12 @@ router.get('/low-stock', isAuthenticated, async (req: any, res) => {
 router.get('/ingredients-public', async (req, res) => {
     try {
         const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-        const ingredients = await inventoryService.getIngredients(search);
+
+        // Public endpoint requires header or default
+        const organizationId = req.headers['x-organization-id'];
+        if (!organizationId) return res.status(400).json({ message: "Organization context required" });
+
+        const ingredients = await inventoryService.getIngredients(organizationId as string, search);
         res.json(ingredients);
     } catch (error) {
         console.error('Error fetching public ingredients:', error);
@@ -70,10 +71,11 @@ router.get('/ingredients-public', async (req, res) => {
  * GET /api/ingredients
  * List all ingredients
  */
-router.get('/ingredients', isAuthenticated, async (req, res) => {
+router.get('/ingredients', isAuthenticated, checkPermission('inventory:read'), async (req: any, res) => {
     try {
         const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-        const ingredients = await inventoryService.getIngredients(search);
+
+        const ingredients = await inventoryService.getIngredients(req.session.user.organizationId, search);
         res.json(ingredients);
     } catch (error) {
         console.error("Error fetching ingredients:", error);
@@ -85,15 +87,10 @@ router.get('/ingredients', isAuthenticated, async (req, res) => {
  * POST /api/ingredients
  * Create new ingredient
  */
-router.post('/ingredients', isAuthenticated, async (req: any, res) => {
+router.post('/ingredients', isAuthenticated, checkPermission('inventory:manage'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
         const ingredientData = insertIngredientSchema.parse(req.body);
-        const ingredient = await inventoryService.createIngredient(ingredientData);
+        const ingredient = await inventoryService.createIngredient(req.session.user.organizationId, ingredientData);
         res.json(ingredient);
     } catch (error) {
         console.error("Error creating ingredient:", error);
@@ -105,16 +102,11 @@ router.post('/ingredients', isAuthenticated, async (req: any, res) => {
  * PATCH /api/ingredients/:id
  * Update ingredient details
  */
-router.patch('/ingredients/:id', isAuthenticated, async (req: any, res) => {
+router.patch('/ingredients/:id', isAuthenticated, checkPermission('inventory:update'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
         const { id } = req.params;
         const updateData = req.body;
-        const ingredient = await inventoryService.updateIngredient(id, updateData);
+        const ingredient = await inventoryService.updateIngredient(req.session.user.organizationId, id, updateData);
         res.json(ingredient);
     } catch (error) {
         console.error("Error updating ingredient:", error);
@@ -126,16 +118,11 @@ router.patch('/ingredients/:id', isAuthenticated, async (req: any, res) => {
  * PUT /api/ingredients/:id
  * Full update of ingredient
  */
-router.put('/ingredients/:id', isAuthenticated, async (req: any, res) => {
+router.put('/ingredients/:id', isAuthenticated, checkPermission('inventory:update'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
         const { id } = req.params;
         const ingredientData = insertIngredientSchema.parse(req.body);
-        const ingredient = await inventoryService.updateIngredient(id, ingredientData);
+        const ingredient = await inventoryService.updateIngredient(req.session.user.organizationId, id, ingredientData);
         res.json(ingredient);
     } catch (error) {
         console.error("Error updating ingredient:", error);
@@ -147,15 +134,10 @@ router.put('/ingredients/:id', isAuthenticated, async (req: any, res) => {
  * DELETE /api/ingredients/:id
  * Delete ingredient
  */
-router.delete('/ingredients/:id', isAuthenticated, async (req: any, res) => {
+router.delete('/ingredients/:id', isAuthenticated, checkPermission('inventory:manage'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
         const { id } = req.params;
-        await inventoryService.deleteIngredient(id);
+        await inventoryService.deleteIngredient(req.session.user.organizationId, id);
         res.json({ message: 'Ingredient deleted successfully' });
     } catch (error) {
         console.error("Error deleting ingredient:", error);
@@ -167,13 +149,8 @@ router.delete('/ingredients/:id', isAuthenticated, async (req: any, res) => {
  * PATCH /api/ingredients/:id/stock
  * Adjust ingredient stock
  */
-router.patch('/ingredients/:id/stock', isAuthenticated, async (req: any, res) => {
+router.patch('/ingredients/:id/stock', isAuthenticated, checkPermission('inventory:update'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
         const { id } = req.params;
         const { quantityChange, reason } = req.body;
 
@@ -181,7 +158,7 @@ router.patch('/ingredients/:id/stock', isAuthenticated, async (req: any, res) =>
             return res.status(400).json({ message: "quantityChange must be a number" });
         }
 
-        await inventoryService.updateIngredientStock(id, quantityChange, user.id, reason);
+        await inventoryService.updateIngredientStock(req.session.user.organizationId, id, quantityChange, req.session.user.id, reason);
         res.json({ success: true });
     } catch (error) {
         console.error("Error updating ingredient stock:", error);
@@ -190,17 +167,12 @@ router.patch('/ingredients/:id/stock', isAuthenticated, async (req: any, res) =>
 });
 
 // Legacy POST for stock adjustment (backward compatibility)
-router.post('/ingredients/:id/stock', isAuthenticated, async (req: any, res) => {
+router.post('/ingredients/:id/stock', isAuthenticated, checkPermission('inventory:update'), async (req: any, res) => {
     try {
-        const user = req.session.user;
-        if (!user || !['admin', 'manager'].includes(user.role)) {
-            return res.status(403).json({ message: "Insufficient permissions" });
-        }
-
         const { id } = req.params;
         const { quantity, reason } = req.body;
 
-        await inventoryService.updateIngredientStock(id, quantity, user.id, reason);
+        await inventoryService.updateIngredientStock(req.session.user.organizationId, id, quantity, req.session.user.id, reason);
         res.json({ success: true });
     } catch (error) {
         console.error("Error updating ingredient stock:", error);

@@ -10,25 +10,17 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { userService } from '../../services/user.service';
-import { isAuthenticated } from '../../auth-middleware';
+import { isAuthenticated, checkPermission } from '../../auth-middleware';
 import { hashPassword } from '../../password-utils';
 import { insertUserSchema } from '@shared/schema';
 
 const router = Router();
 
-// Helper to require admin role
-const requireAdmin = (req: any, res: any, next: any) => {
-    if (!req.session?.user || req.session.user.role !== 'admin') {
-        return res.status(403).json({ message: "Admin access required" });
-    }
-    next();
-};
-
 /**
  * GET /api/users
  * List all active users (admin only)
  */
-router.get('/', isAuthenticated, requireAdmin, async (req: any, res) => {
+router.get('/', isAuthenticated, checkPermission('user:read'), async (req: any, res) => {
     try {
         const users = await userService.getAllUsers();
         res.json(users);
@@ -42,7 +34,7 @@ router.get('/', isAuthenticated, requireAdmin, async (req: any, res) => {
  * POST /api/users
  * Create a new user (admin only)
  */
-router.post('/', isAuthenticated, requireAdmin, async (req: any, res) => {
+router.post('/', isAuthenticated, checkPermission('user:create'), async (req: any, res) => {
     try {
         const userData = insertUserSchema.parse(req.body);
 
@@ -68,7 +60,7 @@ router.post('/', isAuthenticated, requireAdmin, async (req: any, res) => {
  * PUT /api/users/:id
  * Update an existing user (admin only)
  */
-router.put('/:id', isAuthenticated, requireAdmin, async (req: any, res) => {
+router.put('/:id', isAuthenticated, checkPermission('user:update'), async (req: any, res) => {
     try {
         const { id } = req.params;
         const userData = req.body;
@@ -93,7 +85,7 @@ router.put('/:id', isAuthenticated, requireAdmin, async (req: any, res) => {
  * DELETE /api/users/:id
  * Deactivate a user (admin only)
  */
-router.delete('/:id', isAuthenticated, requireAdmin, async (req: any, res) => {
+router.delete('/:id', isAuthenticated, checkPermission('user:delete'), async (req: any, res) => {
     try {
         const { id } = req.params;
         await userService.deleteUser(id);

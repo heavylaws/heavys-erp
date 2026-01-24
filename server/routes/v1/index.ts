@@ -13,6 +13,7 @@ import settingsRoutes from './settings.routes';
 
 import productsRoutes from './products.routes';
 import ordersRoutes from './orders.routes';
+import quotationsRoutes from './quotations.routes';
 import inventoryRoutes from './inventory.routes';
 
 const router = Router();
@@ -24,6 +25,7 @@ router.use('/categories', categoriesRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/products', productsRoutes);
 router.use('/orders', ordersRoutes);
+router.use('/quotations', quotationsRoutes);
 // Inventory routes often sit at root /api/... or /api/inventory/... 
 // The specialized inventory module has /low-stock and /ingredients.
 // If I mount it at /inventory, it becomes /api/v1/inventory/low-stock.

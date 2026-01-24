@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ChartLine, LogOut, DollarSign, ShoppingCart, AlertTriangle, BarChart, Plus, RefreshCw, Users, Monitor, ChefHat, Download, Terminal } from "lucide-react";
+import { ChartLine, LogOut, DollarSign, ShoppingCart, AlertTriangle, BarChart, Plus, RefreshCw, Users, Monitor, ChefHat, Download, Terminal, Package, FileText } from "lucide-react";
 import { InventoryTable } from "@/components/inventory-table";
 import { SalesChart } from "@/components/sales-chart";
 import { UserManagement } from "@/components/user-management";
@@ -26,6 +26,12 @@ import { EnhancedOrderManagement } from "@/components/enhanced-order-management"
 import { CostManagement } from "@/components/cost-management";
 import { ManagerReports } from "@/components/manager-reports";
 import { ShiftButton } from "@/components/shift-button";
+import { SupplierManagement } from '@/components/supplier-management';
+import { CustomerManagement } from '@/components/customer-management';
+import { PurchaseOrderManagement } from '@/components/purchase-order-management';
+import { OrganizationSettings } from '@/components/organization-settings';
+import { QuotationManagement } from '@/components/quotation-management';
+import { Truck, ClipboardList, Building2 } from "lucide-react";
 
 import { OptionGroupManagement } from '@/components/option-group-management';
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -393,125 +399,225 @@ export default function ManagerDashboard() {
 
         {/* Tabbed Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-10">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-            <TabsTrigger value="inventory">Inventory</TabsTrigger>
-            <TabsTrigger value="costs">Cost Management</TabsTrigger>
-            <TabsTrigger value="products" data-value="products">Products</TabsTrigger>
-            <TabsTrigger value="categories">Categories</TabsTrigger>
-            <TabsTrigger value="ingredients">Ingredients</TabsTrigger>
-            <TabsTrigger value="orders">Orders</TabsTrigger>
-            {(user as any)?.role === 'admin' && (
-              <TabsTrigger value="users">User Management</TabsTrigger>
-            )}
-            <TabsTrigger value="option-groups">Option Groups</TabsTrigger>
+          <TabsList className="flex w-full overflow-x-auto pb-2 justify-start h-auto flex-nowrap gap-2 bg-transparent p-0 no-scrollbar">
+            <TabsTrigger value="overview" className="flex-shrink-0">Overview</TabsTrigger>
+            <TabsTrigger value="reports" className="flex-shrink-0">Reports</TabsTrigger>
+            <TabsTrigger value="inventory" className="flex-shrink-0">Inventory</TabsTrigger>
+            <TabsTrigger value="costs" className="flex-shrink-0">Cost Mgmt</TabsTrigger>
+            <TabsTrigger value="products" className="flex-shrink-0">Products</TabsTrigger>
+            <TabsTrigger value="categories" className="flex-shrink-0">Categories</TabsTrigger>
+            <TabsTrigger value="suppliers" className="flex-shrink-0">Suppliers</TabsTrigger>
+            <TabsTrigger value="customers" className="flex-shrink-0">Customers</TabsTrigger>
+            <TabsTrigger value="ingredients" className="flex-shrink-0">Ingredients</TabsTrigger>
+            <TabsTrigger value="purchase-orders" className="flex-shrink-0">PO</TabsTrigger>
+            <TabsTrigger value="orders" className="flex-shrink-0">Orders</TabsTrigger>
+            <TabsTrigger value="users" className="flex-shrink-0">Users</TabsTrigger>
+            <TabsTrigger value="currency" className="flex-shrink-0">Currency</TabsTrigger>
+            <TabsTrigger value="quotes" className="flex-shrink-0">Quotes</TabsTrigger>
+            <TabsTrigger value="settings" className="flex-shrink-0">Settings</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Performance Summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span>Revenue Growth</span>
-                      <Badge variant="secondary">+15% this week</Badge>
+          <TabsContent value="overview" className="space-y-8 animate-fade-in-up">
+            {/* Hero Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card className="bg-gradient-to-br from-blue-600 to-blue-700 text-white border-none shadow-lg transform transition-all hover:scale-105">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-blue-100 font-medium mb-1">Total Revenue</p>
+                      <h3 className="text-3xl font-bold">${analytics?.sales.total.toFixed(2) || '0.00'}</h3>
+                      <div className="mt-4 flex items-center text-blue-200 text-sm">
+                        <ChartLine className="h-4 w-4 mr-1" />
+                        <span>+15% from yesterday</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span>Customer Satisfaction</span>
-                      <Badge variant="secondary">98% positive</Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Order Accuracy</span>
-                      <Badge variant="secondary">99.2%</Badge>
+                    <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                      <DollarSign className="h-6 w-6 text-white" />
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-3">
-                    <AddProductDialog>
-                      <Button className="h-20 flex flex-col items-center justify-center w-full">
-                        <Plus className="h-5 w-5 mb-2" />
-                        Add Product
-                      </Button>
-                    </AddProductDialog>
-                    <Button variant="outline" className="h-20 flex flex-col items-center justify-center w-full">
-                      <RefreshCw className="h-5 w-5 mb-2" />
-                      Update Stock
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="h-20 flex flex-col items-center justify-center w-full border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                      onClick={() => window.location.href = '/reports/strategic'}
-                    >
-                      <BarChart className="h-5 w-5 mb-2" />
-                      Strategic Reports
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="h-20 flex flex-col items-center justify-center w-full border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100"
-                      onClick={() => window.open('/kiosk', '_blank')}
-                    >
-                      <Monitor className="h-5 w-5 mb-2" />
-                      Launch Kiosk
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="h-20 flex flex-col items-center justify-center w-full border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
-                      onClick={() => window.open('/kitchen', '_blank')}
-                    >
-                      <ChefHat className="h-5 w-5 mb-2" />
-                      Kitchen Display
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* System Health Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Health</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center space-x-2">
-                        <Wifi className={`h-4 w-4 ${isConnected ? 'text-green-600' : 'text-red-600'}`} />
-                        <span>Real-time Connection</span>
+              <Card className="bg-gradient-to-br from-purple-600 to-purple-700 text-white border-none shadow-lg transform transition-all hover:scale-105">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-purple-100 font-medium mb-1">Orders Today</p>
+                      <h3 className="text-3xl font-bold">{analytics?.sales.count || 0}</h3>
+                      <div className="mt-4 flex items-center text-purple-200 text-sm">
+                        <ShoppingCart className="h-4 w-4 mr-1" />
+                        <span>New orders coming in</span>
                       </div>
-                      <Badge variant={isConnected ? "default" : "destructive"}>
-                        {isConnected ? "Online" : "Disconnected"}
-                      </Badge>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center space-x-2">
-                        <Database className="h-4 w-4 text-primary" />
-                        <span>Automated Backups</span>
-                      </div>
-                      <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
-                        Active (Daily)
-                      </Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center space-x-2">
-                        <Server className="h-4 w-4 text-gray-600" />
-                        <span>Server Storage</span>
-                      </div>
-                      <Badge variant="outline">Healthy</Badge>
+                    <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                      <ShoppingCart className="h-6 w-6 text-white" />
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
+              <Card className={`${totalLowStockItems > 0 ? 'bg-gradient-to-br from-red-500 to-red-600' : 'bg-gradient-to-br from-green-500 to-green-600'} text-white border-none shadow-lg transform transition-all hover:scale-105`}>
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-white/90 font-medium mb-1">Inventory Status</p>
+                      <h3 className="text-3xl font-bold">{totalLowStockItems}</h3>
+                      <div className="mt-4 flex items-center text-white/80 text-sm">
+                        <AlertTriangle className="h-4 w-4 mr-1" />
+                        <span>{totalLowStockItems > 0 ? 'Items need attention' : 'All stocks healthy'}</span>
+                      </div>
+                    </div>
+                    <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                      <Package className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white border-none shadow-lg transform transition-all hover:scale-105">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-slate-300 font-medium mb-1">System Health</p>
+                      <h3 className="text-3xl font-bold">100%</h3>
+                      <div className="mt-4 flex items-center text-green-400 text-sm">
+                        <Wifi className="h-4 w-4 mr-1" />
+                        <span>All systems online</span>
+                      </div>
+                    </div>
+                    <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+                      <Server className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Main Content Area */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+              {/* Quick Actions - Modern Tiles */}
+              <div className="lg:col-span-2 space-y-6">
+                <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                  <span className="bg-blue-600 w-1 h-6 mr-3 rounded-full"></span>
+                  Quick Actions
+                </h3>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <AddProductDialog>
+                    <div className="group bg-white hover:bg-blue-50 border border-gray-100 hover:border-blue-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col items-center justify-center text-center h-32">
+                      <div className="bg-blue-100 p-3 rounded-full mb-3 group-hover:bg-blue-200 transition-colors">
+                        <Plus className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <span className="font-semibold text-gray-700 group-hover:text-blue-700">Add Product</span>
+                    </div>
+                  </AddProductDialog>
+
+                  <div
+                    onClick={() => {
+                      setActiveTab('inventory');
+                      setTimeout(() => document.getElementById('inventory-section')?.scrollIntoView({ behavior: 'smooth' }), 100);
+                    }}
+                    className="group bg-white hover:bg-orange-50 border border-gray-100 hover:border-orange-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col items-center justify-center text-center h-32"
+                  >
+                    <div className="bg-orange-100 p-3 rounded-full mb-3 group-hover:bg-orange-200 transition-colors">
+                      <Package className="h-6 w-6 text-orange-600" />
+                    </div>
+                    <span className="font-semibold text-gray-700 group-hover:text-orange-700">Restock</span>
+                  </div>
+
+                  <div
+                    onClick={() => window.open('/kiosk', '_blank')}
+                    className="group bg-white hover:bg-purple-50 border border-gray-100 hover:border-purple-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col items-center justify-center text-center h-32"
+                  >
+                    <div className="bg-purple-100 p-3 rounded-full mb-3 group-hover:bg-purple-200 transition-colors">
+                      <Monitor className="h-6 w-6 text-purple-600" />
+                    </div>
+                    <span className="font-semibold text-gray-700 group-hover:text-purple-700">Kiosk Mode</span>
+                  </div>
+
+                  <div
+                    onClick={() => window.open('/kitchen', '_blank')}
+                    className="group bg-white hover:bg-emerald-50 border border-gray-100 hover:border-emerald-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col items-center justify-center text-center h-32"
+                  >
+                    <div className="bg-emerald-100 p-3 rounded-full mb-3 group-hover:bg-emerald-200 transition-colors">
+                      <ChefHat className="h-6 w-6 text-emerald-600" />
+                    </div>
+                    <span className="font-semibold text-gray-700 group-hover:text-emerald-700">Kitchen Display</span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-800 mb-4">Sales Analytics</h3>
+                  <div className="h-64 w-full">
+                    <SalesChart />
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar Stats */}
+              <div className="space-y-6">
+                <Card className="border-none shadow-sm bg-indigo-900 text-white overflow-hidden relative">
+                  <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+                  <CardHeader>
+                    <CardTitle className="flex items-center text-white">
+                      <BarChart className="mr-2 h-5 w-5 text-indigo-300" />
+                      Targets
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 relative z-10">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1 text-indigo-200">
+                        <span>Daily Goal ($1500)</span>
+                        <span>{Math.min(100, ((analytics?.sales.total || 0) / 1500) * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="w-full bg-indigo-950 rounded-full h-2">
+                        <div
+                          className="bg-indigo-400 h-2 rounded-full transition-all duration-1000"
+                          style={{ width: `${Math.min(100, ((analytics?.sales.total || 0) / 1500) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1 text-indigo-200">
+                        <span>Orders Goal (50)</span>
+                        <span>{Math.min(100, ((analytics?.sales.count || 0) / 50) * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="w-full bg-indigo-950 rounded-full h-2">
+                        <div
+                          className="bg-pink-500 h-2 rounded-full transition-all duration-1000"
+                          style={{ width: `${Math.min(100, ((analytics?.sales.count || 0) / 50) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-none shadow-sm h-full">
+                  <CardHeader>
+                    <CardTitle>Recent Alerts</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {totalLowStockItems === 0 && (
+                      <div className="flex flex-col items-center justify-center py-6 text-gray-400">
+                        <CheckCircle className="h-10 w-10 text-green-500 mb-2" />
+                        <p>All systems normal</p>
+                      </div>
+                    )}
+                    <ul className="space-y-3">
+                      {lowStockData?.products?.slice(0, 3).map((p: any) => (
+                        <li key={p.id} className="flex items-start p-3 bg-red-50 rounded-lg border border-red-100">
+                          <AlertTriangle className="h-5 w-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-red-900">{p.name}</p>
+                            <p className="text-xs text-red-700">Stock: {p.stockQuantity} (Min: {p.minThreshold})</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </TabsContent>
 
@@ -557,6 +663,14 @@ export default function ManagerDashboard() {
             <CategoryManagement />
           </TabsContent>
 
+          <TabsContent value="suppliers" className="space-y-6">
+            <SupplierManagement />
+          </TabsContent>
+
+          <TabsContent value="customers" className="space-y-6">
+            <CustomerManagement />
+          </TabsContent>
+
           <TabsContent value="ingredients" className="space-y-6">
             <Card>
               <CardHeader>
@@ -583,19 +697,45 @@ export default function ManagerDashboard() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="purchase-orders" className="space-y-6">
+            <PurchaseOrderManagement />
+          </TabsContent>
+
           <TabsContent value="orders" className="space-y-6">
             <EnhancedOrderManagement />
             <OrderManagement />
           </TabsContent>
 
-          {(user as any)?.role === 'admin' && (
-            <TabsContent value="users" className="space-y-6">
-              <UserManagement />
-            </TabsContent>
-          )}
+          <TabsContent value="users" className="space-y-6">
+            <UserManagement />
+          </TabsContent>
+
+
 
           <TabsContent value="option-groups" className="space-y-6">
             <OptionGroupManagement />
+          </TabsContent>
+
+          <TabsContent value="currency" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <span>💱</span>
+                  <span>Currency Settings</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CurrencyRateManager currentUser={user} canEdit={true} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="settings" className="space-y-6">
+            <OrganizationSettings />
+          </TabsContent>
+
+          <TabsContent value="quotes" className="space-y-6">
+            <QuotationManagement />
           </TabsContent>
         </Tabs>
       </div>

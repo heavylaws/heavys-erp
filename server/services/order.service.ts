@@ -7,24 +7,24 @@ import {
 import { eq, asc, desc, and, or, sql, inArray } from "drizzle-orm";
 
 export class OrderService {
-    async getOrders(limit = 100): Promise<Order[]> {
-        return db.select().from(orders).orderBy(desc(orders.createdAt)).limit(limit);
+    async getOrders(organizationId: string, limit = 100): Promise<Order[]> {
+        return db.select().from(orders).where(eq(orders.organizationId, organizationId)).orderBy(desc(orders.createdAt)).limit(limit);
     }
 
-    async getOrdersByStatus(status: string): Promise<Order[]> {
+    async getOrdersByStatus(organizationId: string, status: string): Promise<Order[]> {
         return db
             .select()
             .from(orders)
-            .where(eq(orders.status, status as any))
+            .where(and(eq(orders.status, status as any), eq(orders.organizationId, organizationId)))
             .orderBy(asc(orders.createdAt));
     }
 
-    async getOrdersByStatusWithItems(status: string): Promise<any[]> {
+    async getOrdersByStatusWithItems(organizationId: string, status: string): Promise<any[]> {
         // Fetch orders
         const orderList = await db
             .select()
             .from(orders)
-            .where(eq(orders.status, status as any))
+            .where(and(eq(orders.status, status as any), eq(orders.organizationId, organizationId)))
             .orderBy(asc(orders.createdAt));
 
         if (orderList.length === 0) return [];
@@ -61,13 +61,13 @@ export class OrderService {
         }));
     }
 
-    async getOrder(id: string): Promise<Order | undefined> {
-        const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    async getOrder(organizationId: string, id: string): Promise<Order | undefined> {
+        const [order] = await db.select().from(orders).where(and(eq(orders.id, id), eq(orders.organizationId, organizationId)));
         return order;
     }
 
-    async getOrderWithDetails(id: string): Promise<any> {
-        const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    async getOrderWithDetails(organizationId: string, id: string): Promise<any> {
+        const [order] = await db.select().from(orders).where(and(eq(orders.id, id), eq(orders.organizationId, organizationId)));
         if (!order) return undefined;
 
         const items = await db
@@ -85,14 +85,14 @@ export class OrderService {
         };
     }
 
-    async createOrder(order: InsertOrder): Promise<Order> {
-        const [newOrder] = await db.insert(orders).values(order).returning();
+    async createOrder(organizationId: string, order: InsertOrder): Promise<Order> {
+        const [newOrder] = await db.insert(orders).values({ ...order, organizationId }).returning();
         return newOrder;
     }
 
-    async createOrderTransaction(order: InsertOrder, items: InsertOrderItem[], userId: string): Promise<Order> {
+    async createOrderTransaction(organizationId: string, order: InsertOrder, items: InsertOrderItem[], userId: string): Promise<Order> {
         const createdOrder = await db.transaction(async (tx: any) => {
-            const [newOrder] = await tx.insert(orders).values(order).returning();
+            const [newOrder] = await tx.insert(orders).values({ ...order, organizationId }).returning();
 
             const recipeIngredientCache: Record<string, any[]> = {};
 
@@ -125,6 +125,7 @@ export class OrderService {
                     }
                     const newQty = result[0].stock_quantity;
                     await tx.insert(inventoryLog).values({
+                        organizationId,
                         type: 'product',
                         itemId: product.id,
                         action: 'sale',
@@ -159,6 +160,7 @@ export class OrderService {
                         }
                         const newQty = result[0].stock_quantity;
                         await tx.insert(inventoryLog).values({
+                            organizationId,
                             type: 'ingredient',
                             itemId: ri.ingredientId,
                             action: 'sale',
@@ -188,6 +190,7 @@ export class OrderService {
             // If sentToBarista is true, create an activity log entry (audit)
             if ((order as any).sentToBarista) {
                 await tx.insert(activityLog).values({
+                    organizationId,
                     userId,
                     action: 'send_to_barista',
                     success: true,
@@ -201,32 +204,35 @@ export class OrderService {
         return createdOrder;
     }
 
-    async updateOrder(id: string, order: Partial<InsertOrder>): Promise<Order> {
+    async updateOrder(organizationId: string, id: string, order: Partial<InsertOrder>): Promise<Order> {
         const [updatedOrder] = await db
             .update(orders)
             .set({ ...order, updatedAt: new Date() })
-            .where(eq(orders.id, id))
+            .where(and(eq(orders.id, id), eq(orders.organizationId, organizationId)))
             .returning();
         return updatedOrder;
     }
 
-    async deleteOrder(id: string): Promise<void> {
+    async deleteOrder(organizationId: string, id: string): Promise<void> {
         await db.transaction(async (tx: any) => {
             // Delete order items first
             await tx.delete(orderItems).where(eq(orderItems.orderId, id));
             // Then delete the order
-            await tx.delete(orders).where(eq(orders.id, id));
+            await tx.delete(orders).where(and(eq(orders.id, id), eq(orders.organizationId, organizationId)));
         });
     }
 
-    async getOrdersByUserId(userId: string): Promise<Order[]> {
+    async getOrdersByUserId(organizationId: string, userId: string): Promise<Order[]> {
         return db.select().from(orders)
-            .where(or(eq(orders.cashierId, userId), eq(orders.baristaId, userId), eq(orders.courierId, userId)))
+            .where(and(
+                eq(orders.organizationId, organizationId),
+                or(eq(orders.cashierId, userId), eq(orders.baristaId, userId), eq(orders.courierId, userId))
+            ))
             .orderBy(desc(orders.createdAt));
     }
 
-    async getAllOrders(): Promise<Order[]> {
-        return db.select().from(orders).orderBy(desc(orders.createdAt));
+    async getAllOrders(organizationId: string): Promise<Order[]> {
+        return db.select().from(orders).where(eq(orders.organizationId, organizationId)).orderBy(desc(orders.createdAt));
     }
 
     async getOrderItems(orderId: string): Promise<OrderItem[]> {
@@ -254,11 +260,12 @@ export class OrderService {
         return items as any;
     }
 
-    async archiveReadyOrdersOlderThan(minutes: number): Promise<string[]> {
+    async archiveReadyOrdersOlderThan(organizationId: string, minutes: number): Promise<string[]> {
         const result = await db.execute(sql`
       UPDATE ${orders}
       SET archived = TRUE
-      WHERE archived = FALSE
+      WHERE organizationId = ${organizationId}
+      AND archived = FALSE
       AND status = 'ready'
       AND (
         (called_at IS NOT NULL AND called_at <= now() - (${minutes} * INTERVAL '1 minute'))
@@ -279,10 +286,11 @@ export class OrderService {
         await db.delete(orderItems).where(eq(orderItems.orderId, orderId));
     }
 
-    async getNextOrderNumber(): Promise<number> {
+    async getNextOrderNumber(organizationId: string): Promise<number> {
         const [result] = await db
             .select({ maxNumber: sql<number>`COALESCE(MAX(${orders.orderNumber}), 0)` })
-            .from(orders);
+            .from(orders)
+            .where(eq(orders.organizationId, organizationId));
         return (result?.maxNumber || 0) + 1;
     }
 }

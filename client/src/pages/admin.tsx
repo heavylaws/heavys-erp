@@ -414,53 +414,53 @@ export default function AdminDashboard() {
 
         {/* Admin Management Tabs */}
         <Tabs defaultValue="users" className="w-full">
-          {/* Updated to grid-cols-11 to accommodate ERP tabs */}
-          <TabsList className="grid w-full grid-cols-11">
-            <TabsTrigger value="users">
+          {/* Use horizontal scroll for tab list to prevent wrapping on smaller screens */}
+          <TabsList className="flex w-full overflow-x-auto pb-2 justify-start h-auto flex-nowrap gap-2 bg-transparent p-0 no-scrollbar">
+            <TabsTrigger value="users" className="flex-shrink-0">
               <Users className="h-4 w-4 mr-2" />
               Users
             </TabsTrigger>
-            <TabsTrigger value="products">
+            <TabsTrigger value="products" className="flex-shrink-0">
               <Package className="h-4 w-4 mr-2" />
               Products
             </TabsTrigger>
-            <TabsTrigger value="categories">
+            <TabsTrigger value="categories" className="flex-shrink-0">
               <FolderOpen className="h-4 w-4 mr-2" />
               Categories
             </TabsTrigger>
-            <TabsTrigger value="suppliers">
+            <TabsTrigger value="suppliers" className="flex-shrink-0">
               <Truck className="h-4 w-4 mr-2" />
               Suppliers
             </TabsTrigger>
-            <TabsTrigger value="customers">
+            <TabsTrigger value="customers" className="flex-shrink-0">
               <Users className="h-4 w-4 mr-2" />
               Customers
             </TabsTrigger>
-            <TabsTrigger value="purchase-orders">
+            <TabsTrigger value="purchase-orders" className="flex-shrink-0">
               <ClipboardList className="h-4 w-4 mr-2" />
               PO
             </TabsTrigger>
-            <TabsTrigger value="orders">
+            <TabsTrigger value="orders" className="flex-shrink-0">
               <ShoppingCart className="h-4 w-4 mr-2" />
               Sales
             </TabsTrigger>
-            <TabsTrigger value="analytics">
+            <TabsTrigger value="analytics" className="flex-shrink-0">
               <Settings className="h-4 w-4 mr-2" />
               Analytics
             </TabsTrigger>
-            <TabsTrigger value="currency">
+            <TabsTrigger value="currency" className="flex-shrink-0">
               💱
               Currency
             </TabsTrigger>
-            <TabsTrigger value="inventory">
+            <TabsTrigger value="inventory" className="flex-shrink-0">
               📦
               Inventory
             </TabsTrigger>
-            <TabsTrigger value="option-groups">
+            <TabsTrigger value="option-groups" className="flex-shrink-0">
               <span className="mr-2">🧩</span>
               Options
             </TabsTrigger>
-            <TabsTrigger value="organization">
+            <TabsTrigger value="organization" className="flex-shrink-0">
               <Building2 className="h-4 w-4 mr-2" />
               Settings
             </TabsTrigger>

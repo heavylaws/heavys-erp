@@ -9,13 +9,13 @@ import { eq } from "drizzle-orm";
 
 export class SettingsService {
     // Company Settings
-    async getCompanySettings(): Promise<CompanySettings | undefined> {
-        const [settings] = await db.select().from(companySettings).limit(1);
+    async getCompanySettings(organizationId: string): Promise<CompanySettings | undefined> {
+        const [settings] = await db.select().from(companySettings).where(eq(companySettings.organizationId, organizationId));
         return settings;
     }
 
-    async updateCompanySettings(settings: InsertCompanySettings): Promise<CompanySettings> {
-        const [existing] = await db.select().from(companySettings).limit(1);
+    async updateCompanySettings(organizationId: string, settings: InsertCompanySettings): Promise<CompanySettings> {
+        const [existing] = await db.select().from(companySettings).where(eq(companySettings.organizationId, organizationId));
 
         if (existing) {
             const [updated] = await db
@@ -27,20 +27,20 @@ export class SettingsService {
         } else {
             const [created] = await db
                 .insert(companySettings)
-                .values(settings)
+                .values({ ...settings, organizationId })
                 .returning();
             return created;
         }
     }
 
     // Receipt Settings
-    async getReceiptSettings(): Promise<ReceiptSettings | undefined> {
-        const [settings] = await db.select().from(receiptSettings).limit(1);
+    async getReceiptSettings(organizationId: string): Promise<ReceiptSettings | undefined> {
+        const [settings] = await db.select().from(receiptSettings).where(eq(receiptSettings.organizationId, organizationId));
         return settings;
     }
 
-    async updateReceiptSettings(settings: InsertReceiptSettings): Promise<ReceiptSettings> {
-        const [existing] = await db.select().from(receiptSettings).limit(1);
+    async updateReceiptSettings(organizationId: string, settings: InsertReceiptSettings): Promise<ReceiptSettings> {
+        const [existing] = await db.select().from(receiptSettings).where(eq(receiptSettings.organizationId, organizationId));
 
         if (existing) {
             const [updated] = await db
@@ -52,7 +52,7 @@ export class SettingsService {
         } else {
             const [created] = await db
                 .insert(receiptSettings)
-                .values(settings)
+                .values({ ...settings, organizationId })
                 .returning();
             return created;
         }

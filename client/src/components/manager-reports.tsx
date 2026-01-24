@@ -198,7 +198,7 @@ export function ManagerReports({ currentUser }: ManagerReportsProps) {
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="shifts" data-testid="tab-shifts">Shifts</TabsTrigger>
           <TabsTrigger value="custom" data-testid="tab-custom">Custom Report</TabsTrigger>

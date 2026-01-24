@@ -9,7 +9,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { settingsService } from '../../services/settings.service';
-import { isAuthenticated, isAdmin } from '../../auth-middleware';
+import { isAuthenticated, checkPermission } from '../../auth-middleware';
 import { insertCompanySettingsSchema, insertReceiptSettingsSchema } from '@shared/schema';
 
 const router = Router();
@@ -20,7 +20,11 @@ const router = Router();
  */
 router.get('/company', async (req, res) => {
     try {
-        const settings = await settingsService.getCompanySettings();
+        // Allow header or session
+        const organizationId = req.session?.user?.organizationId || req.headers['x-organization-id'];
+        if (!organizationId) return res.status(400).json({ message: "Organization context required" });
+
+        const settings = await settingsService.getCompanySettings(organizationId as string);
         res.json(settings || {});
     } catch (error) {
         console.error('Error fetching company settings:', error);
@@ -32,11 +36,11 @@ router.get('/company', async (req, res) => {
  * POST /api/settings/company
  * Update company settings (admin only)
  */
-router.post('/company', isAuthenticated, isAdmin, async (req, res) => {
+router.post('/company', isAuthenticated, checkPermission('settings:manage'), async (req, res) => {
     try {
         console.log('Received company settings update:', req.body);
         const settingsData = insertCompanySettingsSchema.parse(req.body);
-        const updatedSettings = await settingsService.updateCompanySettings(settingsData);
+        const updatedSettings = await settingsService.updateCompanySettings(req.session.user.organizationId, settingsData);
         res.json(updatedSettings);
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -55,7 +59,10 @@ router.post('/company', isAuthenticated, isAdmin, async (req, res) => {
  */
 router.get('/receipt', async (req, res) => {
     try {
-        const settings = await settingsService.getReceiptSettings();
+        const organizationId = req.session?.user?.organizationId || req.headers['x-organization-id'];
+        if (!organizationId) return res.status(400).json({ message: "Organization context required" });
+
+        const settings = await settingsService.getReceiptSettings(organizationId as string);
         res.json(settings || {});
     } catch (error) {
         console.error('Error fetching receipt settings:', error);
@@ -67,10 +74,10 @@ router.get('/receipt', async (req, res) => {
  * POST /api/settings/receipt
  * Update receipt settings (admin only)
  */
-router.post('/receipt', isAuthenticated, isAdmin, async (req, res) => {
+router.post('/receipt', isAuthenticated, checkPermission('settings:manage'), async (req, res) => {
     try {
         const settingsData = insertReceiptSettingsSchema.parse(req.body);
-        const updatedSettings = await settingsService.updateReceiptSettings(settingsData);
+        const updatedSettings = await settingsService.updateReceiptSettings(req.session.user.organizationId, settingsData);
         res.json(updatedSettings);
     } catch (error) {
         if (error instanceof z.ZodError) {
