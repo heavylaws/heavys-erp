@@ -3,14 +3,36 @@ import { registerRoutes } from "./routes";
 import { initializeDemoData } from "./init-demo-data";
 import { initializeAchievements } from "./init-achievements";
 import { registerHealthCheck } from "./health-check";
+import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from 'url';
 
 const app = express();
 
+// Security headers with CORS adjustments for LAN access
+/*
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false, // Required for LAN access from phones
+}));
+*/
+
 // CORS middleware for frontend-backend communication
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin);
+  // Use wildcard for static assets (required for crossorigin script tags)
+  // Otherwise use the request origin for API calls
+  const origin = req.headers.origin || '*';
+  res.header('Access-Control-Allow-Origin', origin);
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -88,13 +110,24 @@ registerHealthCheck(app);
 
   console.log(`🗂️  Static directory: ${staticDir}`);
 
+  // Add CORS headers for static assets (required for crossorigin script tags)
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/assets/') || req.path.endsWith('.js') || req.path.endsWith('.css')) {
+      res.header('Access-Control-Allow-Origin', '*');
+    }
+    next();
+  });
+
   // Serve static files
   app.use(express.static(staticDir));
 
-  // Catch-all handler for SPA routing
-  app.get('*', (req, res) => {
+  // Catch-all handler for SPA routing - EXCLUDE API routes
+  app.get('*', (req, res, next) => {
+    // Don't intercept API routes
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
     const indexPath = path.join(staticDir, 'index.html');
-    console.log(`📄 Serving index.html from: ${indexPath}`);
     res.sendFile(indexPath, (err) => {
       if (err) {
         console.error('Error serving index.html:', err);

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardList, Plus, Search, X, Eye, Check, Package, Truck, Calendar, ChevronsUpDown } from "lucide-react";
+import { ClipboardList, Plus, Search, X, Eye, Check, Package, Truck, Calendar, ChevronsUpDown, Loader2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
@@ -327,6 +327,11 @@ function ReceiveItemsDialog({ order, trigger }: { order: PurchaseOrder; trigger:
     const [receiving, setReceiving] = useState(false);
     const [receiveData, setReceiveData] = useState<{ [itemId: string]: { qty: number; serials: string } }>({});
 
+    const { data: fullOrder, isLoading } = useQuery<PurchaseOrder>({
+        queryKey: [`/api/purchase-orders/${order.id}`],
+        enabled: open,
+    });
+
     const handleReceive = async () => {
         const items = Object.entries(receiveData)
             .filter(([_, data]) => data.qty > 0)
@@ -347,6 +352,7 @@ function ReceiveItemsDialog({ order, trigger }: { order: PurchaseOrder; trigger:
             if (!response.ok) throw new Error("Failed to receive items");
 
             queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+            queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${order.id}`] });
             toast({ title: "Success", description: "Items received successfully" });
             setOpen(false);
         } catch (error: any) {
@@ -365,70 +371,76 @@ function ReceiveItemsDialog({ order, trigger }: { order: PurchaseOrder; trigger:
                     <DialogDescription>Enter quantities received and serial numbers (if applicable)</DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Product</TableHead>
-                                <TableHead className="w-20">Ordered</TableHead>
-                                <TableHead className="w-20">Received</TableHead>
-                                <TableHead className="w-24">Receive Qty</TableHead>
-                                <TableHead>Serial Numbers</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {order.items?.map((item) => {
-                                const remaining = item.quantity - (item.receivedQuantity || 0);
-                                return (
-                                    <TableRow key={item.id}>
-                                        <TableCell className="font-medium">
-                                            {item.product?.name || "Unknown Product"}
-                                            {item.product?.sku && <span className="text-gray-500 ml-1">({item.product.sku})</span>}
-                                        </TableCell>
-                                        <TableCell>{item.quantity}</TableCell>
-                                        <TableCell>
-                                            <Badge variant={item.receivedQuantity === item.quantity ? "default" : "secondary"}>
-                                                {item.receivedQuantity || 0}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                max={remaining}
-                                                value={receiveData[item.id]?.qty || 0}
-                                                onChange={(e) =>
-                                                    setReceiveData({
-                                                        ...receiveData,
-                                                        [item.id]: { ...receiveData[item.id], qty: parseInt(e.target.value) || 0 },
-                                                    })
-                                                }
-                                                disabled={remaining === 0}
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                placeholder="SN1, SN2, SN3..."
-                                                value={receiveData[item.id]?.serials || ""}
-                                                onChange={(e) =>
-                                                    setReceiveData({
-                                                        ...receiveData,
-                                                        [item.id]: { ...receiveData[item.id], serials: e.target.value },
-                                                    })
-                                                }
-                                                disabled={remaining === 0}
-                                            />
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
+                    {isLoading ? (
+                        <div className="flex justify-center py-8">
+                            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                        </div>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Product</TableHead>
+                                    <TableHead className="w-20">Ordered</TableHead>
+                                    <TableHead className="w-20">Received</TableHead>
+                                    <TableHead className="w-24">Receive Qty</TableHead>
+                                    <TableHead>Serial Numbers</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {fullOrder?.items?.map((item) => {
+                                    const remaining = item.quantity - (item.receivedQuantity || 0);
+                                    return (
+                                        <TableRow key={item.id}>
+                                            <TableCell className="font-medium">
+                                                {item.product?.name || "Unknown Product"}
+                                                {item.product?.sku && <span className="text-gray-500 ml-1">({item.product.sku})</span>}
+                                            </TableCell>
+                                            <TableCell>{item.quantity}</TableCell>
+                                            <TableCell>
+                                                <Badge variant={item.receivedQuantity === item.quantity ? "default" : "secondary"}>
+                                                    {item.receivedQuantity || 0}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    max={remaining}
+                                                    value={receiveData[item.id]?.qty || 0}
+                                                    onChange={(e) =>
+                                                        setReceiveData({
+                                                            ...receiveData,
+                                                            [item.id]: { ...receiveData[item.id], qty: parseInt(e.target.value) || 0 },
+                                                        })
+                                                    }
+                                                    disabled={remaining === 0}
+                                                />
+                                            </TableCell>
+                                            <TableCell>
+                                                <Input
+                                                    placeholder="SN1, SN2, SN3..."
+                                                    value={receiveData[item.id]?.serials || ""}
+                                                    onChange={(e) =>
+                                                        setReceiveData({
+                                                            ...receiveData,
+                                                            [item.id]: { ...receiveData[item.id], serials: e.target.value },
+                                                        })
+                                                    }
+                                                    disabled={remaining === 0}
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
+                    )}
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setOpen(false)}>
                         Cancel
                     </Button>
-                    <Button onClick={handleReceive} disabled={receiving}>
+                    <Button onClick={handleReceive} disabled={receiving || isLoading}>
                         <Check className="h-4 w-4 mr-2" />
                         {receiving ? "Processing..." : "Confirm Receipt"}
                     </Button>

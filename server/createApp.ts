@@ -10,6 +10,8 @@ export async function createApp() {
     const app = express();
 
     // Security headers - must be early in middleware chain
+    // Temporarily disabled for debugging local network access from mobile
+    /*
     app.use(helmet({
         contentSecurityPolicy: {
             directives: {
@@ -20,8 +22,11 @@ export async function createApp() {
                 connectSrc: ["'self'", "ws:", "wss:"],
             },
         },
-        crossOriginEmbedderPolicy: false, // Required for some PWA features
+        crossOriginEmbedderPolicy: false,
+        crossOriginOpenerPolicy: false,
+        crossOriginResourcePolicy: false, // Required for LAN access from phones
     }));
+    */
 
     // CORS middleware for frontend-backend communication
     app.use((req, res, next) => {

@@ -10,6 +10,9 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { storage } from '../../storage';
 import { productService } from '../../services/product.service';
 import { isAuthenticated, checkPermission } from '../../auth-middleware';
@@ -17,6 +20,42 @@ import { insertProductSchema } from '@shared/schema';
 import { ENABLE_OPTIONS_SYSTEM } from '@shared/feature-flags';
 
 const router = Router();
+
+// Setup upload storage
+const uploadDir = path.resolve(process.cwd(), 'client/public/uploads/products');
+// Ensure upload directory exists
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const fileStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadDir)
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, 'product-' + uniqueSuffix + path.extname(file.originalname))
+    }
+})
+
+const upload = multer({
+    storage: fileStorage,
+    limits: {
+        fileSize: 5 * 1024 * 1024 // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|webp|heic|heif/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        } else {
+            cb(new Error('Only image files are allowed!'));
+        }
+    }
+});
+
 
 /**
  * GET /api/products
@@ -118,6 +157,19 @@ router.get('/:categoryId', isAuthenticated, async (req: any, res) => {
 });
 
 /**
+ * POST /api/products/upload
+ * Upload product image
+ */
+router.post('/upload', isAuthenticated, upload.single('image'), (req: any, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: "No image file provided" });
+    }
+    // Return relative path for frontend use
+    const publicPath = `/uploads/products/${req.file.filename}`;
+    res.json({ url: publicPath });
+});
+
+/**
  * POST /api/products
  * Create new product (Manager/Admin)
  */
@@ -129,6 +181,8 @@ router.post('/', isAuthenticated, checkPermission('product:create'), async (req:
             price: z.union([z.string(), z.number()]).transform((v) => String(v)),
             costPerUnit: z.union([z.string(), z.number(), z.null()]).optional().transform((v) => v !== null && v !== undefined ? String(v) : v),
             barcodes: z.array(z.string()).optional(),
+            sku: z.string().optional().nullable().transform(v => v === "" ? null : v),
+            barcode: z.string().optional().nullable().transform(v => v === "" ? null : v),
         });
 
         const parsed = relaxedProductSchema.safeParse(req.body);
@@ -143,6 +197,13 @@ router.post('/', isAuthenticated, checkPermission('product:create'), async (req:
         res.json(product);
     } catch (error) {
         console.error("Error creating product:", error);
+        // Log detailed error to a file for debugging
+        const fs = await import('fs');
+        const path = await import('path');
+        const logPath = path.resolve(process.cwd(), 'server_error.log');
+        const errorMessage = `[${new Date().toISOString()}] Error creating product: ${error instanceof Error ? error.stack : JSON.stringify(error)}\nRequest Body: ${JSON.stringify(req.body)}\n\n`;
+        await fs.promises.appendFile(logPath, errorMessage);
+
         res.status(500).json({ message: "Failed to create product" });
     }
 });

@@ -9,9 +9,15 @@ export async function setupVite(app: Express, server: Server) {
   const { createServer: createViteServer, createLogger } = await import("vite");
   const viteLogger = createLogger();
 
+  const port = parseInt(process.env.PORT || '5003', 10);
+
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
+    hmr: {
+      server,
+      // Use the same port as the Express server
+      clientPort: port,
+    },
     allowedHosts: true as const,
   };
 

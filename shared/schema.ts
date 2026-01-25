@@ -81,6 +81,7 @@ export const products = pgTable("products", {
   description: text("description"),
   barcode: varchar("barcode", { length: 100 }),
   sku: varchar("sku", { length: 50 }).unique(),
+  imageUrl: varchar("image_url", { length: 500 }),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(), // Selling price
   categoryId: varchar("category_id").references(() => categories.id),
   type: productTypeEnum("type").notNull().default('finished_good'),

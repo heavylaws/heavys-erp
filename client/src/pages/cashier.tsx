@@ -1007,8 +1007,24 @@ export default function CashierPOS() {
                 onClick={() => addToOrder(product)}
               >
                 <CardContent className={compactView ? 'p-2' : 'p-4'}>
-                  <div className={`${compactView ? 'aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center p-1' : 'aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center'}`}>
-                    <Coffee className={`${compactView ? 'h-5 w-5 text-gray-400' : 'h-8 w-8 text-gray-400'}`} />
+                  <div className={`${compactView ? 'aspect-square bg-gray-100 rounded-md mb-2 flex items-center justify-center p-1 relative overflow-hidden' : 'aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center relative overflow-hidden'}`}>
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.parentElement?.querySelector('.placeholder-icon')?.classList.remove('hidden');
+                        }}
+                      />
+                    ) : (
+                      <Coffee className={`${compactView ? 'h-5 w-5 text-gray-400' : 'h-8 w-8 text-gray-400'}`} />
+                    )}
+                    {/* Fallback icon that shows if image fails to load */}
+                    {product.imageUrl && (
+                      <Coffee className={`placeholder-icon hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ${compactView ? 'h-5 w-5 text-gray-400' : 'h-8 w-8 text-gray-400'}`} />
+                    )}
                   </div>
                   {compactView ? (
                     <Tooltip>
