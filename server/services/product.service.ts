@@ -1,8 +1,8 @@
 
 import { db } from "../db";
 import {
-    products, productBarcodes, recipeIngredients, ingredients, inventoryLog,
-    type Product, type InsertProduct, type RecipeIngredient, type InsertRecipeIngredient
+    products, productBarcodes, productComponents, components, inventoryLog,
+    type Product, type InsertProduct, type ProductComponent, type InsertProductComponent
 } from "@shared/schema";
 import { eq, asc, desc, and, sql } from "drizzle-orm";
 
@@ -170,61 +170,54 @@ export class ProductService {
         });
     }
 
-    // Recipe Operations
-    async getRecipeIngredients(organizationId: string, productId: string): Promise<RecipeIngredient[]> {
-        // Technically productId implies org, but for safety. Recipe ingredients table doesn't have orgId?
-        // Wait, recipeIngredients doesn't have orgId in schema?
-        // Let's check schema. I did missed recipeIngredients. 
-        // But productId is unique per org.
-        // For strictness, join with products? Or just rely on productId.
-        // I will assume productId is secure enough for now or add check.
-        // But better signature:
-        return db.select().from(recipeIngredients).where(eq(recipeIngredients.productId, productId));
+    // Component Operations
+    async getProductComponents(organizationId: string, productId: string): Promise<ProductComponent[]> {
+        return db.select().from(productComponents).where(eq(productComponents.productId, productId));
     }
 
-    async getOptionalRecipeIngredients(productId: string): Promise<Array<{
-        recipeIngredientId: string;
-        ingredientId: string;
+    async getOptionalProductComponents(productId: string): Promise<Array<{
+        productComponentId: string;
+        componentId: string;
         quantity: string;
-        ingredientName: string;
+        componentName: string;
         unit: string | null;
         stockQuantity: string;
         minThreshold: string;
     }>> {
         return db
             .select({
-                recipeIngredientId: recipeIngredients.id,
-                ingredientId: recipeIngredients.ingredientId,
-                quantity: recipeIngredients.quantity,
-                ingredientName: ingredients.name,
-                unit: ingredients.unit,
-                stockQuantity: ingredients.stockQuantity,
-                minThreshold: ingredients.minThreshold,
+                productComponentId: productComponents.id,
+                componentId: productComponents.componentId,
+                quantity: productComponents.quantity,
+                componentName: components.name,
+                unit: components.unit,
+                stockQuantity: components.stockQuantity,
+                minThreshold: components.minThreshold,
             })
-            .from(recipeIngredients)
-            .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+            .from(productComponents)
+            .innerJoin(components, eq(productComponents.componentId, components.id))
             .where(
                 and(
-                    eq(recipeIngredients.productId, productId),
-                    eq(recipeIngredients.isOptional, true),
-                    eq(ingredients.isActive, true)
+                    eq(productComponents.productId, productId),
+                    eq(productComponents.isOptional, true),
+                    eq(components.isActive, true)
                 )
             )
-            .orderBy(asc(ingredients.name));
+            .orderBy(asc(components.name));
     }
 
-    async createRecipeIngredient(recipeIngredient: InsertRecipeIngredient): Promise<RecipeIngredient> {
-        const [newRecipeIngredient] = await db.insert(recipeIngredients).values(recipeIngredient).returning();
-        return newRecipeIngredient;
+    async createProductComponent(productComponent: InsertProductComponent): Promise<ProductComponent> {
+        const [newProductComponent] = await db.insert(productComponents).values(productComponent).returning();
+        return newProductComponent;
     }
 
-    async deleteRecipeIngredient(id: string): Promise<void> {
-        await db.delete(recipeIngredients).where(eq(recipeIngredients.id, id));
+    async deleteProductComponent(id: string): Promise<void> {
+        await db.delete(productComponents).where(eq(productComponents.id, id));
     }
 
-    async updateRecipeIngredient(id: string, data: Partial<InsertRecipeIngredient>): Promise<RecipeIngredient> {
-        const [updated] = await db.update(recipeIngredients).set(data).where(eq(recipeIngredients.id, id)).returning();
-        if (!updated) throw new Error('Recipe ingredient not found');
+    async updateProductComponent(id: string, data: Partial<InsertProductComponent>): Promise<ProductComponent> {
+        const [updated] = await db.update(productComponents).set(data).where(eq(productComponents.id, id)).returning();
+        if (!updated) throw new Error('Product component not found');
         return updated;
     }
 

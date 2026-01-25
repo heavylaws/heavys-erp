@@ -1,5 +1,5 @@
 {
-  "name": "heavys-erp",
+  "name": "h-erp",
   "version": "1.0.0",
   "type": "module",
   "main": "dist/electron/main.cjs",

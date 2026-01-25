@@ -40,7 +40,7 @@ router.post('/company', isAuthenticated, checkPermission('settings:manage'), asy
     try {
         console.log('Received company settings update:', req.body);
         const settingsData = insertCompanySettingsSchema.parse(req.body);
-        const updatedSettings = await settingsService.updateCompanySettings(req.session.user.organizationId, settingsData);
+        const updatedSettings = await settingsService.updateCompanySettings(req.session.user!.organizationId, settingsData);
         res.json(updatedSettings);
     } catch (error) {
         if (error instanceof z.ZodError) {
@@ -77,7 +77,7 @@ router.get('/receipt', async (req, res) => {
 router.post('/receipt', isAuthenticated, checkPermission('settings:manage'), async (req, res) => {
     try {
         const settingsData = insertReceiptSettingsSchema.parse(req.body);
-        const updatedSettings = await settingsService.updateReceiptSettings(req.session.user.organizationId, settingsData);
+        const updatedSettings = await settingsService.updateReceiptSettings(req.session.user!.organizationId, settingsData);
         res.json(updatedSettings);
     } catch (error) {
         if (error instanceof z.ZodError) {

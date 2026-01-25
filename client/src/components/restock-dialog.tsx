@@ -41,8 +41,8 @@ interface RestockDialogProps {
     name: string;
     stockQuantity: number | string;
     unit?: string;
-    type: 'product' | 'ingredient';
-    productType?: 'finished_good' | 'ingredient_based';
+    type: 'product' | 'component';
+    productType?: 'finished_good' | 'component_based';
   };
   children: React.ReactNode;
 }
@@ -64,7 +64,7 @@ export function RestockDialog({ item, children }: RestockDialogProps) {
     mutationFn: async (data: RestockFormData) => {
       const endpoint = item.type === 'product'
         ? `/api/products/${item.id}/stock`
-        : `/api/ingredients/${item.id}/stock`;
+        : `/api/components/${item.id}/stock`;
       const res = await apiRequest("PATCH", endpoint, {
         quantityChange: data.quantity, // Positive number for adding stock
         reason: data.reason,
@@ -78,7 +78,7 @@ export function RestockDialog({ item, children }: RestockDialogProps) {
         description: `Successfully added ${form.getValues('quantity')} ${item.unit || 'units'} to ${item.name}`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/low-stock'] });
       setOpen(false);
       form.reset();
@@ -120,11 +120,11 @@ export function RestockDialog({ item, children }: RestockDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {item.productType === 'ingredient_based' ? (
+        {item.productType === 'component_based' ? (
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold mb-1">Recipe-Based Product</p>
+              <p className="font-semibold mb-1">Bundle-Based Product</p>
               <p>
                 This product's stock is managed automatically based on its ingredients.
                 You should restock the individual ingredients instead.
@@ -151,7 +151,7 @@ export function RestockDialog({ item, children }: RestockDialogProps) {
                       />
                     </FormControl>
                     <div className="text-sm text-gray-600">
-                      New total: {newQuantity.toFixed(item.type === 'ingredient' ? 3 : 0)} {item.unit || 'units'}
+                      New total: {newQuantity.toFixed(item.type === 'component' ? 3 : 0)} {item.unit || 'units'}
                     </div>
                     <FormMessage />
                   </FormItem>

@@ -10,66 +10,66 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Edit, Package } from "lucide-react";
-import { insertIngredientSchema, type InsertIngredient, type Ingredient } from "@shared/schema";
+import { insertComponentSchema, type InsertComponent, type Component } from "@shared/schema";
 
-interface EditIngredientDialogProps {
-  ingredient: Ingredient;
+interface EditComponentDialogProps {
+  component: Component;
   children?: React.ReactNode;
 }
 
-export function EditIngredientDialog({ ingredient, children }: EditIngredientDialogProps) {
+export function EditComponentDialog({ component, children }: EditComponentDialogProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
 
-  const form = useForm<InsertIngredient>({
-    resolver: zodResolver(insertIngredientSchema),
+  const form = useForm<InsertComponent>({
+    resolver: zodResolver(insertComponentSchema),
     defaultValues: {
-      name: ingredient.name,
-      unit: ingredient.unit,
-      stockQuantity: ingredient.stockQuantity,
-      minThreshold: ingredient.minThreshold,
-      costPerUnit: ingredient.costPerUnit || "0",
-      isActive: ingredient.isActive,
+      name: component.name,
+      unit: component.unit,
+      stockQuantity: component.stockQuantity,
+      minThreshold: component.minThreshold,
+      costPerUnit: component.costPerUnit || "0",
+      isActive: component.isActive,
     },
   });
 
-  // Reset form when ingredient changes
+  // Reset form when component changes
   useEffect(() => {
     form.reset({
-      name: ingredient.name,
-      unit: ingredient.unit,
-      stockQuantity: ingredient.stockQuantity,
-      minThreshold: ingredient.minThreshold,
-      costPerUnit: ingredient.costPerUnit || "0",
-      isActive: ingredient.isActive,
+      name: component.name,
+      unit: component.unit,
+      stockQuantity: component.stockQuantity,
+      minThreshold: component.minThreshold,
+      costPerUnit: component.costPerUnit || "0",
+      isActive: component.isActive,
     });
-  }, [ingredient, form]);
+  }, [component, form]);
 
-  const updateIngredientMutation = useMutation({
-    mutationFn: async (data: InsertIngredient) => {
-      const response = await apiRequest("PUT", `/api/ingredients/${ingredient.id}`, data);
+  const updateComponentMutation = useMutation({
+    mutationFn: async (data: InsertComponent) => {
+      const response = await apiRequest("PUT", `/api/components/${component.id}`, data);
       return response.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ingredients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/components"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory/low-stock"] });
       toast({
         title: "Success",
-        description: `Ingredient "${data.name}" updated successfully`,
+        description: `Component "${data.name}" updated successfully`,
       });
       setOpen(false);
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update ingredient. Please try again.",
+        description: error.message || "Failed to update component. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: InsertIngredient) => {
-    updateIngredientMutation.mutate(data);
+  const onSubmit = (data: InsertComponent) => {
+    updateComponentMutation.mutate(data);
   };
 
   const defaultTrigger = (
@@ -87,7 +87,7 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Package className="h-5 w-5" />
-            <span>Edit Ingredient</span>
+            <span>Edit Component</span>
           </DialogTitle>
         </DialogHeader>
         <Form {...form}>
@@ -99,7 +99,7 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
                 <FormItem>
                   <FormLabel>Name *</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Coffee Beans, Milk, Sugar" {...field} value={field.value ?? ''} />
+                    <Input placeholder="e.g., Screw, Bolt, Nut" {...field} value={field.value ?? ''} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -128,11 +128,11 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
                   <FormItem>
                     <FormLabel>Cost per Unit ($)</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.0001" 
-                        placeholder="0.00" 
-                        {...field} 
+                      <Input
+                        type="number"
+                        step="0.0001"
+                        placeholder="0.00"
+                        {...field}
                         value={field.value ?? ''}
                       />
                     </FormControl>
@@ -150,11 +150,11 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
                   <FormItem>
                     <FormLabel>Current Stock *</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.001" 
-                        placeholder="0" 
-                        {...field} 
+                      <Input
+                        type="number"
+                        step="0.001"
+                        placeholder="0"
+                        {...field}
                         value={field.value ?? ''}
                       />
                     </FormControl>
@@ -170,11 +170,11 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
                   <FormItem>
                     <FormLabel>Low Stock Alert *</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        step="0.001" 
-                        placeholder="0" 
-                        {...field} 
+                      <Input
+                        type="number"
+                        step="0.001"
+                        placeholder="0"
+                        {...field}
                         value={field.value ?? ''}
                       />
                     </FormControl>
@@ -190,9 +190,9 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
-                    <FormLabel>Active Ingredient</FormLabel>
+                    <FormLabel>Active Component</FormLabel>
                     <div className="text-sm text-muted-foreground">
-                      Ingredient is available for use in recipes
+                      Component is available for use in bundles
                     </div>
                   </div>
                   <FormControl>
@@ -209,8 +209,8 @@ export function EditIngredientDialog({ ingredient, children }: EditIngredientDia
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={updateIngredientMutation.isPending}>
-                {updateIngredientMutation.isPending ? "Updating..." : "Update Ingredient"}
+              <Button type="submit" disabled={updateComponentMutation.isPending}>
+                {updateComponentMutation.isPending ? "Updating..." : "Update Component"}
               </Button>
             </div>
           </form>

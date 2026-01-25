@@ -44,13 +44,13 @@ export async function initializeDemoData() {
         isActive: true,
       },
       {
-        id: "barista",
-        username: "barista",
-        password: "barista123",
-        email: "barista@highway-cafe.com",
-        firstName: "Barista",
+        id: "technician",
+        username: "technician",
+        password: "technician123",
+        email: "technician@h-erp.com",
+        firstName: "Technician",
         lastName: "User",
-        role: "barista" as const,
+        role: "technician" as const,
         isActive: true,
       },
       {
@@ -101,8 +101,8 @@ export async function initializeDemoData() {
       createdCategories.push(created);
     }
 
-    // Create ingredients
-    const demoIngredients = [
+    // Create components
+    const demoComponents = [
       {
         name: "Coffee Beans",
         unit: "grams",
@@ -154,11 +154,11 @@ export async function initializeDemoData() {
       },
     ];
 
-    console.log("🧪 Creating ingredients...");
-    const createdIngredients = [];
-    for (const ingredient of demoIngredients) {
-      const created = await storage.createIngredient(ingredient);
-      createdIngredients.push(created);
+    console.log("🧪 Creating components...");
+    const createdComponents = [];
+    for (const component of demoComponents) {
+      const created = await storage.createComponent(component);
+      createdComponents.push(created);
     }
 
     // Create products
@@ -168,13 +168,13 @@ export async function initializeDemoData() {
     const dessertCategory = createdCategories.find(c => c.name === "Desserts");
 
     const demoProducts = [
-      // Coffee products (ingredient-based)
+      // Coffee products (component-based)
       {
         name: "Espresso",
         description: "Strong coffee shot",
         price: "2.50",
         categoryId: coffeeCategory?.id,
-        type: "ingredient_based" as const,
+        type: "component_based" as const,
         stockQuantity: "0",
         minThreshold: 0,
       },
@@ -183,7 +183,7 @@ export async function initializeDemoData() {
         description: "Espresso with steamed milk foam",
         price: "3.50",
         categoryId: coffeeCategory?.id,
-        type: "ingredient_based" as const,
+        type: "component_based" as const,
         stockQuantity: "0",
         minThreshold: 0,
       },
@@ -192,7 +192,7 @@ export async function initializeDemoData() {
         description: "Espresso with steamed milk",
         price: "4.00",
         categoryId: coffeeCategory?.id,
-        type: "ingredient_based" as const,
+        type: "component_based" as const,
         stockQuantity: "0",
         minThreshold: 0,
       },
@@ -201,17 +201,17 @@ export async function initializeDemoData() {
         description: "Latte with vanilla syrup",
         price: "4.50",
         categoryId: coffeeCategory?.id,
-        type: "ingredient_based" as const,
+        type: "component_based" as const,
         stockQuantity: "0",
         minThreshold: 0,
       },
-      // Food products (ingredient-based)
+      // Food products (component-based)
       {
         name: "Ham & Cheese Sandwich",
         description: "Fresh sandwich with ham and cheese",
         price: "6.50",
         categoryId: foodCategory?.id,
-        type: "ingredient_based" as const,
+        type: "component_based" as const,
         stockQuantity: "0",
         minThreshold: 0,
       },
@@ -261,16 +261,16 @@ export async function initializeDemoData() {
       createdProducts.push(created);
     }
 
-    // Create recipes for ingredient-based products
-    console.log("📝 Creating recipes...");
+    // Create bundles for component-based products
+    console.log("📝 Creating bundles...");
 
-    const coffeeBeansId = createdIngredients.find(i => i.name === "Coffee Beans")?.id;
-    const milkId = createdIngredients.find(i => i.name === "Milk")?.id;
-    const sugarId = createdIngredients.find(i => i.name === "Sugar")?.id;
-    const vanillaSyrupId = createdIngredients.find(i => i.name === "Vanilla Syrup")?.id;
-    const breadId = createdIngredients.find(i => i.name === "Bread")?.id;
-    const cheeseId = createdIngredients.find(i => i.name === "Cheese")?.id;
-    const hamId = createdIngredients.find(i => i.name === "Ham")?.id;
+    const coffeeBeansId = createdComponents.find(c => c.name === "Coffee Beans")?.id;
+    const milkId = createdComponents.find(c => c.name === "Milk")?.id;
+    const sugarId = createdComponents.find(c => c.name === "Sugar")?.id;
+    const vanillaSyrupId = createdComponents.find(c => c.name === "Vanilla Syrup")?.id;
+    const breadId = createdComponents.find(c => c.name === "Bread")?.id;
+    const cheeseId = createdComponents.find(c => c.name === "Cheese")?.id;
+    const hamId = createdComponents.find(c => c.name === "Ham")?.id;
 
     const espressoProduct = createdProducts.find(p => p.name === "Espresso");
     const cappuccinoProduct = createdProducts.find(p => p.name === "Cappuccino");
@@ -278,32 +278,32 @@ export async function initializeDemoData() {
     const vanillaLatteProduct = createdProducts.find(p => p.name === "Vanilla Latte");
     const sandwichProduct = createdProducts.find(p => p.name === "Ham & Cheese Sandwich");
 
-    const recipes = [
-      // Espresso recipe
-      { productId: espressoProduct?.id || "", ingredientId: coffeeBeansId || "", quantity: "18" },
+    const bundles = [
+      // Espresso bundle
+      { productId: espressoProduct?.id || "", componentId: coffeeBeansId || "", quantity: "18" },
 
-      // Cappuccino recipe
-      { productId: cappuccinoProduct?.id || "", ingredientId: coffeeBeansId || "", quantity: "18" },
-      { productId: cappuccinoProduct?.id || "", ingredientId: milkId || "", quantity: "150" },
+      // Cappuccino bundle
+      { productId: cappuccinoProduct?.id || "", componentId: coffeeBeansId || "", quantity: "18" },
+      { productId: cappuccinoProduct?.id || "", componentId: milkId || "", quantity: "150" },
 
-      // Latte recipe
-      { productId: latteProduct?.id || "", ingredientId: coffeeBeansId || "", quantity: "18" },
-      { productId: latteProduct?.id || "", ingredientId: milkId || "", quantity: "200" },
+      // Latte bundle
+      { productId: latteProduct?.id || "", componentId: coffeeBeansId || "", quantity: "18" },
+      { productId: latteProduct?.id || "", componentId: milkId || "", quantity: "200" },
 
-      // Vanilla Latte recipe
-      { productId: vanillaLatteProduct?.id || "", ingredientId: coffeeBeansId || "", quantity: "18" },
-      { productId: vanillaLatteProduct?.id || "", ingredientId: milkId || "", quantity: "200" },
-      { productId: vanillaLatteProduct?.id || "", ingredientId: vanillaSyrupId || "", quantity: "15" },
+      // Vanilla Latte bundle
+      { productId: vanillaLatteProduct?.id || "", componentId: coffeeBeansId || "", quantity: "18" },
+      { productId: vanillaLatteProduct?.id || "", componentId: milkId || "", quantity: "200" },
+      { productId: vanillaLatteProduct?.id || "", componentId: vanillaSyrupId || "", quantity: "15" },
 
-      // Ham & Cheese Sandwich recipe
-      { productId: sandwichProduct?.id || "", ingredientId: breadId || "", quantity: "2" },
-      { productId: sandwichProduct?.id || "", ingredientId: hamId || "", quantity: "3" },
-      { productId: sandwichProduct?.id || "", ingredientId: cheeseId || "", quantity: "2" },
+      // Ham & Cheese Sandwich bundle
+      { productId: sandwichProduct?.id || "", componentId: breadId || "", quantity: "2" },
+      { productId: sandwichProduct?.id || "", componentId: hamId || "", quantity: "3" },
+      { productId: sandwichProduct?.id || "", componentId: cheeseId || "", quantity: "2" },
     ];
 
-    for (const recipe of recipes) {
-      if (recipe.productId && recipe.ingredientId) {
-        await storage.createRecipeIngredient(recipe);
+    for (const bundle of bundles) {
+      if (bundle.productId && bundle.componentId) {
+        await storage.createProductComponent(bundle);
       }
     }
 
@@ -312,7 +312,7 @@ export async function initializeDemoData() {
     console.log("   - admin / admin123 (Admin)");
     console.log("   - manager / manager123 (Manager)");
     console.log("   - cashier / cashier123 (Cashier)");
-    console.log("   - barista / barista123 (Barista)");
+    console.log("   - technician / technician123 (Technician)");
     console.log("   - courier / courier123 (Courier)");
 
     // Initialize default currency exchange rate

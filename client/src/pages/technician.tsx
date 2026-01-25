@@ -16,14 +16,14 @@ interface OrderWithItems extends Order {
     id: string;
     product?: {
       name: string;
-      forBarista?: boolean;
+      forTechnician?: boolean;
     };
     quantity: number;
     modifications?: string;
   }>;
 }
 
-export default function BaristaScreen() {
+export default function TechnicianScreen() {
   const { user, isLoading, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -42,9 +42,9 @@ export default function BaristaScreen() {
     }
   });
 
-  // Fetch ALL active orders relevant to Barista (Pending, Preparing, Ready) with items included
+  // Fetch ALL active orders relevant to Technician (Pending, Preparing, Ready) with items included
   const { data: allOrders = [] } = useQuery<OrderWithItems[]>({
-    queryKey: ['/api/orders', { active_barista: true }],
+    queryKey: ['/api/orders', { active_technician: true }],
     queryFn: async () => {
       // Fetch statuses we care about - now using optimized endpoint with items included
       const statuses = ['pending', 'preparing', 'ready'];
@@ -57,11 +57,11 @@ export default function BaristaScreen() {
         if (res.ok) combined = [...combined, ...(await res.json())];
       }
 
-      // Filter for orders with barista items (items already included in response)
+      // Filter for orders with technician items (items already included in response)
       return combined
         .map(order => ({
           ...order,
-          items: (order.items || []).filter((i: any) => i.product?.forBarista)
+          items: (order.items || []).filter((i: any) => i.product?.forTechnician)
         }))
         .filter(o => o.items && o.items.length > 0);
     },
@@ -89,10 +89,10 @@ export default function BaristaScreen() {
       await queryClient.cancelQueries({ queryKey: ['/api/orders'] });
 
       // Snapshot previous state
-      const previousOrders = queryClient.getQueryData<OrderWithItems[]>(['/api/orders', { active_barista: true }]);
+      const previousOrders = queryClient.getQueryData<OrderWithItems[]>(['/api/orders', { active_technician: true }]);
 
       // Optimistically update the cache
-      queryClient.setQueryData<OrderWithItems[]>(['/api/orders', { active_barista: true }], (old) => {
+      queryClient.setQueryData<OrderWithItems[]>(['/api/orders', { active_technician: true }], (old) => {
         if (!old) return old;
         return old.map(order =>
           order.id === id ? { ...order, status: status as any } : order
@@ -104,7 +104,7 @@ export default function BaristaScreen() {
     onError: (_err, _vars, context) => {
       // Rollback on error
       if (context?.previousOrders) {
-        queryClient.setQueryData(['/api/orders', { active_barista: true }], context.previousOrders);
+        queryClient.setQueryData(['/api/orders', { active_technician: true }], context.previousOrders);
       }
       toast({ title: "Error", description: "Failed to update order status", variant: "destructive" });
     },
@@ -138,7 +138,7 @@ export default function BaristaScreen() {
         <div className="flex items-center gap-3">
           <div className="bg-orange-600 rounded-lg p-2 text-white"><Coffee size={24} /></div>
           <div>
-            <h1 className="text-2xl font-bold text-stone-800">Barista Station</h1>
+            <h1 className="text-2xl font-bold text-stone-800">Technician Station</h1>
             <p className="text-sm text-stone-500">{new Date().toLocaleDateString()}</p>
           </div>
         </div>

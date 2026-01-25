@@ -158,7 +158,13 @@ router.get("/customers/:id", requireAuth, async (req, res) => {
 
 router.post("/customers", requireAuth, async (req: any, res) => {
     try {
-        const data = insertCustomerSchema.parse(req.body);
+        const rawData = { ...req.body };
+        // Sanitize numeric inputs that might come as empty strings
+        if (rawData.creditLimit === "") rawData.creditLimit = null;
+        if (rawData.currentBalance === "") rawData.currentBalance = "0";
+        if (rawData.discountPercent === "") rawData.discountPercent = "0";
+
+        const data = insertCustomerSchema.parse(rawData);
         const customer = await erpStorage.createCustomer(data);
         res.status(201).json(customer);
     } catch (error: any) {
@@ -172,7 +178,13 @@ router.post("/customers", requireAuth, async (req: any, res) => {
 
 router.put("/customers/:id", requireAuth, async (req: any, res) => {
     try {
-        const data = insertCustomerSchema.partial().parse(req.body);
+        const rawData = { ...req.body };
+        // Sanitize numeric inputs that might come as empty strings
+        if (rawData.creditLimit === "") rawData.creditLimit = null;
+        if (rawData.currentBalance === "") rawData.currentBalance = "0";
+        if (rawData.discountPercent === "") rawData.discountPercent = "0";
+
+        const data = insertCustomerSchema.partial().parse(rawData);
         const customer = await erpStorage.updateCustomer(req.params.id, data);
         res.json(customer);
     } catch (error: any) {

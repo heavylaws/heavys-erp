@@ -13,6 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, FileText, CheckCircle, Printer, ArrowRight, X, Search, User } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { ProductSearch } from "@/components/product-search";
+import { BarcodeInput } from "@/components/barcode-input";
 import type { Product, User as AppUser, Customer } from "@shared/schema";
 
 interface QuoteItem {
@@ -31,6 +33,7 @@ interface Quote {
     createdAt: string;
     validUntil: string | null;
     items: QuoteItem[];
+    customer?: Customer;
 }
 
 export function QuotationManagement() {
@@ -44,14 +47,14 @@ export function QuotationManagement() {
     const [builderCustomer, setBuilderCustomer] = useState<string>("");
     const [builderCustomerName, setBuilderCustomerName] = useState<string>("");
     const [builderItems, setBuilderItems] = useState<QuoteItem[]>([]);
-    const [productSearch, setProductSearch] = useState("");
+    // Product Search state managed by components
 
     // Fetch Data
     const { data: quotes = [], isLoading } = useQuery<Quote[]>({
         queryKey: ['/api/v1/quotations'],
     });
 
-    const { data: products = [] } = useQuery<Product[]>({
+    const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
         queryKey: ['/api/products'],
     });
 
@@ -59,15 +62,8 @@ export function QuotationManagement() {
         queryKey: ['/api/customers'],
     });
 
-    // Filtered Products for Picker
-    const filteredProducts = useMemo(() => {
-        if (!productSearch) return [];
-        const lower = productSearch.toLowerCase();
-        return products.filter(p =>
-            p.name.toLowerCase().includes(lower) ||
-            p.barcode?.includes(lower)
-        ).slice(0, 5);
-    }, [products, productSearch]);
+    // Filtered Products for Picker - REMOVED (Handled by ProductSearch component)
+    // const filteredProducts = ...
 
     // Mutations
     const createQuoteMutation = useMutation({
@@ -120,7 +116,7 @@ export function QuotationManagement() {
             }
             return [...prev, { productId: product.id, quantity: 1, priceAtQuote: Number(product.price), product }];
         });
-        setProductSearch(""); // Clear search after adding
+        // setProductSearch(""); // Handled by components internally
     };
 
     const calculateTotal = () => {
@@ -130,7 +126,7 @@ export function QuotationManagement() {
     const handleSave = () => {
         const payload = {
             customerId: builderCustomer === "guest" ? null : builderCustomer,
-            customerName: builderCustomer === "guest" ? builderCustomerName : customers.find(c => c.id === builderCustomer)?.firstName,
+            customerName: builderCustomer === "guest" ? builderCustomerName : customers.find(c => c.id === builderCustomer)?.name,
             totalAmount: calculateTotal(),
             items: builderItems
         };
@@ -181,7 +177,7 @@ export function QuotationManagement() {
                             quotes.map(quote => (
                                 <TableRow key={quote.id}>
                                     <TableCell>{format(new Date(quote.createdAt), 'MMM dd, yyyy')}</TableCell>
-                                    <TableCell className="font-medium">{quote.customer ? `${quote.customer.firstName} ${quote.customer.lastName}` : quote.customerName || 'Guest'}</TableCell>
+                                    <TableCell className="font-medium">{quote.customer ? quote.customer.name : quote.customerName || 'Guest'}</TableCell>
                                     <TableCell>${Number(quote.totalAmount).toFixed(2)}</TableCell>
                                     <TableCell>{getStatusBadge(quote.status)}</TableCell>
                                     <TableCell className="text-right space-x-2">
@@ -219,7 +215,7 @@ export function QuotationManagement() {
                                         <SelectContent>
                                             <SelectItem value="guest">Guest / Walk-in</SelectItem>
                                             {customers.map(c => (
-                                                <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>
+                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
@@ -234,33 +230,33 @@ export function QuotationManagement() {
                                 </div>
 
                                 {/* Product Picker */}
-                                <div className="space-y-2">
-                                    <Label>Add Products</Label>
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                        <Input
-                                            placeholder="Search products..."
-                                            value={productSearch}
-                                            onChange={e => setProductSearch(e.target.value)}
-                                            className="pl-9"
-                                        />
-                                        {filteredProducts.length > 0 && (
-                                            <div className="absolute z-10 w-full bg-white border rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto">
-                                                {filteredProducts.map(p => (
-                                                    <div
-                                                        key={p.id}
-                                                        className="p-2 hover:bg-gray-100 cursor-pointer flex justify-between items-center"
-                                                        onClick={() => handleAddItem(p)}
-                                                    >
-                                                        <div>
-                                                            <div className="font-medium">{p.name}</div>
-                                                            <div className="text-xs text-gray-500">${p.price}</div>
-                                                        </div>
-                                                        <Plus className="h-4 w-4 text-blue-500" />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                <div className="space-y-4 p-4 border rounded-lg bg-white shadow-sm">
+                                    <h3 className="font-semibold text-sm text-gray-900 mb-2">Add Items</h3>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label>Scan Barcode</Label>
+                                            <BarcodeInput
+                                                products={products}
+                                                onProductAdd={handleAddItem}
+                                                placeholder={productsLoading ? "Loading products..." : "Scan or enter barcode..."}
+                                                className="w-full"
+                                                autoFocus={true}
+                                                disabled={productsLoading}
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>Search Product</Label>
+                                            <ProductSearch
+                                                products={products}
+                                                onProductSelect={handleAddItem}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <div className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">i</div>
+                                        Use barcode scanner or search by name/SKU
                                     </div>
                                 </div>
 

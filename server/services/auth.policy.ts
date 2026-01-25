@@ -99,7 +99,7 @@ export class AuthPolicy {
     /**
      * Check if a user has a specific permission
      */
-    static can(user: User | undefined, permission: Permission): boolean {
+    static can(user: { role: string } | undefined | null, permission: Permission): boolean {
         if (!user || !user.role) return false;
 
         const rolePerms = expandPermissions(user.role);

@@ -2,7 +2,7 @@
  * Order Routes Module (v1)
  * 
  * Handles order management:
- * - Order creation/updates (Barista/Kitchen flow)
+ * - Order creation/updates (Technician/Assembly flow)
  * - Order listing and filtering
  * - Order items management
  * - Customer calling (notification)
@@ -53,23 +53,23 @@ const favoriteComboUpdateSchema = insertFavoriteComboSchema
  */
 router.get('/', isAuthenticated, checkPermission('order:read'), async (req, res) => {
     try {
-        const { status, limit, sentToBarista, include_items } = req.query as any;
+        const { status, limit, sentToFulfillment, include_items } = req.query as any;
         let orders;
 
         if (status) {
             // If include_items is set, use the optimized endpoint that returns items inline
             if (include_items === 'true') {
-                orders = await orderService.getOrdersByStatusWithItems(req.session.user.organizationId, status as string);
+                orders = await orderService.getOrdersByStatusWithItems(req.session.user!.organizationId, status as string);
             } else {
-                orders = await orderService.getOrdersByStatus(req.session.user.organizationId, status as string);
+                orders = await orderService.getOrdersByStatus(req.session.user!.organizationId, status as string);
             }
         } else {
-            orders = await orderService.getOrders(req.session.user.organizationId, limit ? parseInt(limit as string) : undefined);
+            orders = await orderService.getOrders(req.session.user!.organizationId, limit ? parseInt(limit as string) : undefined);
         }
 
-        // Optional filter: only orders explicitly sent to barista
-        if (sentToBarista === 'true') {
-            orders = orders.filter((order: any) => order.sentToBarista);
+        // Optional filter: only orders explicitly sent to fulfillment
+        if (sentToFulfillment === 'true') {
+            orders = orders.filter((order: any) => order.sentToFulfillment);
         }
 
         // Exclude archived orders by default unless explicitly asked
@@ -110,7 +110,7 @@ router.get('/:id', isAuthenticated, checkPermission('order:read'), async (req: a
 router.get('/:id/items', isAuthenticated, checkPermission('order:read'), async (req, res) => {
     try {
         const { id } = req.params;
-        const items = await orderService.getOrderItems(req.session.user.organizationId, id);
+        const items = await orderService.getOrderItems(id);
         res.json(items);
     } catch (error) {
         console.error("Error fetching order items:", error);
@@ -142,7 +142,7 @@ router.post('/', isAuthenticated, checkPermission('order:create'), async (req: a
 
         // Calculate subtotal from items (including selected option price adjustments if flag enabled)
         let subtotal = 0;
-        const optionalIngredientCache: Record<string, any[]> = {};
+        const optionalComponentCache: Record<string, any[]> = {};
 
         for (const item of items) {
             const baseUnitPrice = parseFloat(item.unitPrice || item.price || '0');
@@ -164,31 +164,31 @@ router.post('/', isAuthenticated, checkPermission('order:create'), async (req: a
             }
 
             const optionalSummaries: string[] = [];
-            let selectedOptionalIngredientIds: string[] = [];
-            if (Array.isArray(item.selectedOptionalIngredientIds) && item.selectedOptionalIngredientIds.length) {
-                const uniqueOptionalIds = Array.from(new Set(item.selectedOptionalIngredientIds.map((id: any) => String(id))));
-                if (!optionalIngredientCache[item.productId]) {
+            let selectedOptionalComponentIds: string[] = [];
+            if (Array.isArray(item.selectedOptionalComponentIds) && item.selectedOptionalComponentIds.length) {
+                const uniqueOptionalIds = Array.from(new Set(item.selectedOptionalComponentIds.map((id: any) => String(id))));
+                if (!optionalComponentCache[item.productId]) {
                     // Use ProductService
-                    optionalIngredientCache[item.productId] = await productService.getOptionalRecipeIngredients(item.productId);
+                    optionalComponentCache[item.productId] = await productService.getOptionalProductComponents(item.productId);
                 }
                 const optionalMap = new Map(
-                    (optionalIngredientCache[item.productId] || []).map((row: any) => [row.recipeIngredientId, row])
+                    (optionalComponentCache[item.productId] || []).map((row: any) => [row.productComponentId, row])
                 );
 
                 for (const optId of uniqueOptionalIds) {
                     const detail = optionalMap.get(optId);
                     if (!detail) {
                         return res.status(400).json({
-                            message: `Invalid optional ingredient selection for product ${item.productId}`
+                            message: `Invalid optional component selection for product ${item.productId}`
                         });
                     }
-                    selectedOptionalIngredientIds.push(detail.recipeIngredientId);
+                    selectedOptionalComponentIds.push(detail.productComponentId);
                     const parsedQty = detail.quantity ? parseFloat(detail.quantity) : NaN;
                     const hasQty = !isNaN(parsedQty) && parsedQty > 0;
                     const qtyLabel = hasQty
                         ? `${Number(parsedQty.toFixed(3)).toString()}${detail.unit ? ` ${detail.unit}` : ''}`
                         : '';
-                    optionalSummaries.push(qtyLabel ? `${detail.ingredientName} (${qtyLabel})` : detail.ingredientName);
+                    optionalSummaries.push(qtyLabel ? `${detail.componentName} (${qtyLabel})` : detail.componentName);
                 }
             }
 
@@ -197,7 +197,7 @@ router.post('/', isAuthenticated, checkPermission('order:create'), async (req: a
             item.__effectiveUnitPrice = effectiveUnitPrice.toFixed(2);
             item.__lineTotal = lineTotal.toFixed(2);
             item.__resolvedOptionIds = selectedOptionIds;
-            item.__selectedOptionalIngredientIds = selectedOptionalIngredientIds;
+            item.__selectedOptionalComponentIds = selectedOptionalComponentIds;
 
             const noteParts: string[] = [];
             if (item.notes && typeof item.notes === 'string' && item.notes.trim().length) {
@@ -231,13 +231,13 @@ router.post('/', isAuthenticated, checkPermission('order:create'), async (req: a
             courierId: user.role === 'courier' ? user.id : undefined
         };
 
-        if (orderWithNumber.sentToBarista) {
-            // Logic for sending to barista, check if user is allowed beyond just general order management
+        if (orderWithNumber.sentToFulfillment) {
+            // Logic for sending to fulfillment, check if user is allowed beyond just general order management
             // We use specific permission check or role check if needed contextually
-            // Assuming order:create implies basic rights, but sentToBarista might be special
+            // Assuming order:create implies basic rights, but sentToFulfillment might be special
             // Keeping original logic via policy or inline
             if (!AuthPolicy.canAny(user, ['order:manage', 'order:create'])) {
-                return res.status(403).json({ message: 'Insufficient permissions to send order to barista' });
+                return res.status(403).json({ message: 'Insufficient permissions to send order to fulfillment' });
             }
         }
 
@@ -270,13 +270,13 @@ router.patch('/:id', isAuthenticated, checkPermission('order:update'), async (re
         const { id } = req.params;
         const updateData = req.body;
 
-        // Only allow marking sentToBarista by cashier/manager/admin roles
-        if (typeof updateData.sentToBarista !== 'undefined' && updateData.sentToBarista === true) {
+        // Only allow marking sentToFulfillment by cashier/manager/admin roles
+        if (typeof updateData.sentToFulfillment !== 'undefined' && updateData.sentToFulfillment === true) {
             // Using logic: Casher/Manager/Admin have 'order:create' or 'order:manage'. 
-            // Barista (order:update) should not trigger this?
+            // Technician (order:update) should not trigger this?
             // AuthPolicy check:
             if (!AuthPolicy.canAny(user, ['order:create', 'order:manage'])) {
-                return res.status(403).json({ message: 'Insufficient permissions to send order to barista' });
+                return res.status(403).json({ message: 'Insufficient permissions to send order to fulfillment' });
             }
         }
 
@@ -288,24 +288,24 @@ router.patch('/:id', isAuthenticated, checkPermission('order:update'), async (re
         }
 
         // Set user assignments based on role and status
-        if (updateData.status === 'preparing' && user.role === 'barista') {
-            updateData.baristaId = user.id;
+        if (updateData.status === 'preparing' && user.role === 'technician') {
+            updateData.technicianId = user.id;
         } else if (updateData.status === 'delivered' && user.role === 'courier') {
             updateData.courierId = user.id;
         }
 
         const order = await orderService.updateOrder(user.organizationId, id, updateData);
 
-        if (typeof updateData.sentToBarista !== 'undefined' && updateData.sentToBarista === true) {
+        if (typeof updateData.sentToFulfillment !== 'undefined' && updateData.sentToFulfillment === true) {
             try {
                 await storage.createActivityLog({
                     userId: user.id,
-                    action: 'send_to_barista',
+                    action: 'send_to_fulfillment',
                     success: true,
                     details: { orderId: id },
                 });
             } catch (e) {
-                console.warn('Failed to create activity log for send_to_barista', e);
+                console.warn('Failed to create activity log for send_to_fulfillment', e);
             }
         }
 

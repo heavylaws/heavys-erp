@@ -51,7 +51,7 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
       stockQuantity: product.stockQuantity,
       minThreshold: product.minThreshold,
       isActive: product.isActive,
-      forBarista: (product as any).forBarista ?? false,
+      requiresFulfillment: (product as any).requiresFulfillment ?? false,
       barcodes: product.barcodes || [],
     },
   });
@@ -69,7 +69,7 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
       stockQuantity: product.stockQuantity,
       minThreshold: product.minThreshold,
       isActive: product.isActive,
-      forBarista: (product as any).forBarista ?? false,
+      requiresFulfillment: (product as any).requiresFulfillment ?? false,
       barcodes: product.barcodes || [],
     });
   }, [product, form]);
@@ -351,13 +351,13 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
 
               <FormField
                 control={form.control}
-                name="forBarista"
+                name="requiresFulfillment"
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                     <div className="space-y-0.5">
-                      <FormLabel>For Barista</FormLabel>
+                      <FormLabel>Requires Fulfillment</FormLabel>
                       <span className="text-sm text-muted-foreground">
-                        When enabled, this item will appear on the barista screen.
+                        When enabled, this item will appear on the technician screen.
                       </span>
                     </div>
                     <FormControl>
@@ -384,7 +384,7 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="finished_good">Finished Good</SelectItem>
-                        <SelectItem value="ingredient_based">Recipe-Based</SelectItem>
+                        <SelectItem value="component_based">Bundle-Based</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

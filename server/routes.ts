@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { z } from "zod";
-import { insertProductSchema, insertIngredientSchema, insertCategorySchema, insertOrderSchema, insertOrderItemSchema, insertUserSchema, insertOptionGroupSchema, insertOptionSchema, insertOptionIngredientSchema, insertProductOptionGroupSchema, insertFavoriteComboSchema, insertReceiptSettingsSchema, insertCompanySettingsSchema } from "@shared/schema";
+import { insertProductSchema, insertComponentSchema, insertCategorySchema, insertOrderSchema, insertOrderItemSchema, insertUserSchema, insertOptionGroupSchema, insertOptionSchema, insertOptionComponentSchema, insertProductOptionGroupSchema, insertFavoriteComboSchema, insertReceiptSettingsSchema, insertCompanySettingsSchema } from "@shared/schema";
 import { ENABLE_OPTIONS_SYSTEM } from '@shared/feature-flags';
 
 import { isAuthenticated, isAdmin } from "./auth-middleware";
@@ -287,7 +287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: dbUser.role,
         firstName: dbUser.firstName || '',
         lastName: dbUser.lastName || '',
-        email: dbUser.email || `${dbUser.role}@company.com`
+        email: dbUser.email || `${dbUser.role}@company.com`,
+        organizationId: dbUser.organizationId || '',
       };
 
       // Create new session with user data
@@ -353,7 +354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           { username: 'admin', password: 'Admin123!', role: 'admin', firstName: 'Admin', lastName: 'User', email: 'admin@company.com', isActive: true },
           { username: 'manager', password: 'Manager123!', role: 'manager', firstName: 'Manager', lastName: 'User', email: 'manager@company.com', isActive: true },
           { username: 'cashier', password: 'Cashier123!', role: 'cashier', firstName: 'Cashier', lastName: 'User', email: 'cashier@company.com', isActive: true },
-          { username: 'barista', password: 'Barista123!', role: 'barista', firstName: 'Barista', lastName: 'User', email: 'barista@company.com', isActive: true },
+          { username: 'technician', password: 'Barista123!', role: 'technician', firstName: 'Barista', lastName: 'User', email: 'barista@company.com', isActive: true },
           { username: 'courier', password: 'Courier123!', role: 'courier', firstName: 'Courier', lastName: 'User', email: 'courier@company.com', isActive: true },
         ];
 
@@ -362,7 +363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.createUser({
             ...userData,
             password: hashedPassword,
-            role: userData.role as "admin" | "manager" | "cashier" | "barista" | "courier"
+            role: userData.role as "admin" | "manager" | "cashier" | "technician" | "courier"
           });
         }
         console.log("Demo users initialized successfully with bcrypt hashed passwords");
@@ -406,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newUser = await storage.createUser({
         ...userData,
         password: hashedPassword,
-        role: userData.role as "admin" | "manager" | "cashier" | "barista" | "courier"
+        role: userData.role as "admin" | "manager" | "cashier" | "technician" | "courier"
       });
 
       // Don't return password hash in response
@@ -1037,7 +1038,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/ingredients-public', async (req, res) => {
     try {
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const ingredients = await storage.getIngredients(search);
+      const ingredients = await storage.getComponents(search);
       res.json(ingredients);
     } catch (error) {
       console.error('Error fetching public ingredients:', error);
@@ -1048,7 +1049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/ingredients', isAuthenticated, async (req, res) => {
     try {
       const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const ingredients = await storage.getIngredients(search);
+      const ingredients = await storage.getComponents(search);
       res.json(ingredients);
     } catch (error) {
       console.error("Error fetching ingredients:", error);
@@ -1063,8 +1064,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Insufficient permissions" });
       }
 
-      const ingredientData = insertIngredientSchema.parse(req.body);
-      const ingredient = await storage.createIngredient(ingredientData);
+      const ingredientData = insertComponentSchema.parse(req.body);
+      const ingredient = await storage.createComponent(ingredientData);
       res.json(ingredient);
     } catch (error) {
       console.error("Error creating ingredient:", error);
@@ -1081,7 +1082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { id } = req.params;
       const updateData = req.body;
-      const ingredient = await storage.updateIngredient(id, updateData);
+      const ingredient = await storage.updateComponent(id, updateData);
       res.json(ingredient);
     } catch (error) {
       console.error("Error updating ingredient:", error);
@@ -1104,7 +1105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "quantityChange must be a number" });
       }
 
-      await storage.updateIngredientStock(id, quantityChange, user.id, reason);
+      await storage.updateComponentStock(id, quantityChange, user.id, reason);
       res.json({ success: true });
     } catch (error) {
       console.error("Error updating ingredient stock:", error);
@@ -1120,8 +1121,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { id } = req.params;
-      const ingredientData = insertIngredientSchema.parse(req.body);
-      const ingredient = await storage.updateIngredient(id, ingredientData);
+      const ingredientData = insertComponentSchema.parse(req.body);
+      const ingredient = await storage.updateComponent(id, ingredientData);
       res.json(ingredient);
     } catch (error) {
       console.error("Error updating ingredient:", error);
@@ -1137,7 +1138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { id } = req.params;
-      await storage.deleteIngredient(id);
+      await storage.deleteComponent(id);
       res.json({ message: 'Ingredient deleted successfully' });
     } catch (error) {
       console.error("Error deleting ingredient:", error);
@@ -1149,7 +1150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/products/:id/recipe', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const recipeIngredients = await storage.getRecipeIngredients(id);
+      const recipeIngredients = await storage.getProductComponents(id);
       res.json(recipeIngredients);
     } catch (error) {
       console.error("Error fetching recipe ingredients:", error);
@@ -1160,7 +1161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/products/:id/optional-ingredients', isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const optionalIngredients = await storage.getOptionalRecipeIngredients(id);
+      const optionalIngredients = await storage.getOptionalProductComponents(id);
       res.json(optionalIngredients);
     } catch (error) {
       console.error('Error fetching optional recipe ingredients:', error);
@@ -1176,11 +1177,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { id } = req.params;
-      const { ingredientId, quantity, isOptional = false } = req.body;
+      const { componentId, quantity, isOptional = false } = req.body;
 
-      const recipeIngredient = await storage.createRecipeIngredient({
+      const recipeIngredient = await storage.createProductComponent({
         productId: id,
-        ingredientId,
+        componentId,
         quantity: quantity.toString(),
         isOptional
       });
@@ -1204,7 +1205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeof req.body.isOptional === 'boolean') data.isOptional = req.body.isOptional;
       if (req.body.quantity) data.quantity = req.body.quantity.toString();
 
-      const updated = await storage.updateRecipeIngredient(id, data);
+      const updated = await storage.updateProductComponent(id, data);
       res.json(updated);
     } catch (error) {
       console.error('Error updating recipe ingredient:', error);
@@ -1220,7 +1221,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { id } = req.params;
-      await storage.deleteRecipeIngredient(id);
+      await storage.deleteProductComponent(id);
       res.json({ message: "Recipe ingredient removed successfully" });
     } catch (error) {
       console.error("Error removing recipe ingredient:", error);
@@ -1238,11 +1239,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         products = await storage.getProducts();
       }
-      // For ingredient_based products, fetch and attach recipeIngredients
+      // For component_based products, fetch and attach recipeIngredients
       const enriched = await Promise.all(products.map(async (p) => {
         let base: any = p;
-        if (p.type === 'ingredient_based') {
-          const recipeIngredients = await storage.getRecipeIngredients(p.id);
+        if (p.type === 'component_based') {
+          const recipeIngredients = await storage.getProductComponents(p.id);
           base = { ...base, recipeIngredients };
         }
         if (ENABLE_OPTIONS_SYSTEM) {
@@ -1292,8 +1293,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!ENABLE_OPTIONS_SYSTEM) return res.json(products);
       const enriched = await Promise.all(products.map(async (p) => {
         let base: any = p;
-        if (p.type === 'ingredient_based') {
-          const recipeIngredients = await storage.getRecipeIngredients(p.id);
+        if (p.type === 'component_based') {
+          const recipeIngredients = await storage.getProductComponents(p.id);
           base = { ...base, recipeIngredients };
         }
         try {
@@ -1449,7 +1450,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const { quantity, reason } = req.body;
 
-      await storage.updateIngredientStock(id, quantity, user.id, reason);
+      await storage.updateComponentStock(id, quantity, user.id, reason);
       res.json({ success: true });
     } catch (error) {
       console.error("Error updating ingredient stock:", error);
@@ -1598,7 +1599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (Array.isArray(item.selectedOptionalIngredientIds) && item.selectedOptionalIngredientIds.length) {
           const uniqueOptionalIds = Array.from(new Set(item.selectedOptionalIngredientIds.map((id: any) => String(id))));
           if (!optionalIngredientCache[item.productId]) {
-            optionalIngredientCache[item.productId] = await storage.getOptionalRecipeIngredients(item.productId);
+            optionalIngredientCache[item.productId] = await storage.getOptionalProductComponents(item.productId);
           }
           const optionalMap = new Map(
             (optionalIngredientCache[item.productId] || []).map((row: any) => [row.recipeIngredientId, row])
@@ -1752,7 +1753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Set user assignments based on role and status
-      if (updateData.status === 'preparing' && user.role === 'barista') {
+      if (updateData.status === 'preparing' && user.role === 'technician') {
         updateData.baristaId = user.id;
       } else if (updateData.status === 'delivered' && user.role === 'courier') {
         updateData.courierId = user.id;
@@ -1875,19 +1876,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const [products, ingredients] = await Promise.all([
         storage.getLowStockProducts(),
-        storage.getLowStockIngredients()
+        storage.getLowStockComponents()
       ]);
 
-      // Attach recipeIngredients for ingredient_based products
+      // Attach productComponents for component_based products
       const withRecipes = await Promise.all(products.map(async (p) => {
-        if (p.type === 'ingredient_based') {
-          const recipeIngredients = await storage.getRecipeIngredients(p.id);
-          return { ...p, recipeIngredients };
+        if (p.type === 'component_based') {
+          const productComponents = await storage.getProductComponents(p.id);
+          return { ...p, productComponents };
         }
         return p;
       }));
 
-      res.json({ products: withRecipes, ingredients });
+      res.json({ products: withRecipes, components: ingredients });
     } catch (error) {
       console.error("Error fetching low stock items:", error);
       res.status(500).json({ message: "Failed to fetch low stock items" });
@@ -2641,7 +2642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         if (!requireManagerOrAdmin(req.session.user)) return res.status(403).json({ message: 'Insufficient permissions' });
         const { id } = req.params;
-        const payload = insertOptionIngredientSchema.parse({ ...req.body, optionId: id });
+        const payload = insertOptionComponentSchema.parse({ ...req.body, optionId: id });
         const row = await (storage as any).addOptionIngredient(payload);
         res.json(row);
       } catch (e: any) {

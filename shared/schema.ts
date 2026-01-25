@@ -37,7 +37,7 @@ export const organizations = pgTable("organizations", {
 });
 
 // User roles enum
-export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'cashier', 'warehouse', 'technician', 'sales', 'barista', 'courier']);
+export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'cashier', 'warehouse', 'technician', 'sales', 'courier']);
 
 // User storage table (required for Replit Auth)
 export const users = pgTable("users", {
@@ -71,7 +71,7 @@ export const categories = pgTable("categories", {
 ]);
 
 // Product types enum
-export const productTypeEnum = pgEnum('product_type', ['finished_good', 'ingredient_based']);
+export const productTypeEnum = pgEnum('product_type', ['finished_good', 'component_based']);
 
 // Products table
 export const products = pgTable("products", {
@@ -100,6 +100,7 @@ export const products = pgTable("products", {
   reorderQuantity: integer("reorder_quantity").default(20),
   location: varchar("location", { length: 50 }), // Warehouse bin/shelf
   requiresSerialNumber: boolean("requires_serial_number").notNull().default(false),
+  requiresFulfillment: boolean("requires_fulfillment").notNull().default(false), // Replaces forBarista
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -163,8 +164,8 @@ export const selectReceiptSettingsSchema = createInsertSchema(receiptSettings); 
 export type InsertReceiptSettings = z.infer<typeof insertReceiptSettingsSchema>;
 export type ReceiptSettings = z.infer<typeof selectReceiptSettingsSchema>;
 
-// Ingredients table
-export const ingredients = pgTable("ingredients", {
+// Components table
+export const components = pgTable("components", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").references(() => organizations.id),
   name: varchar("name", { length: 200 }).notNull(),
@@ -176,14 +177,14 @@ export const ingredients = pgTable("ingredients", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("idx_ingredients_org").on(table.organizationId),
+  index("idx_components_org").on(table.organizationId),
 ]);
 
-// Recipe ingredients (for ingredient-based products)
-export const recipeIngredients = pgTable("recipe_ingredients", {
+// Product components (for component-based products)
+export const productComponents = pgTable("product_components", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").references(() => products.id).notNull(),
-  ingredientId: varchar("ingredient_id").references(() => ingredients.id).notNull(),
+  componentId: varchar("component_id").references(() => components.id).notNull(),
   quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull(),
   isOptional: boolean("is_optional").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -194,7 +195,7 @@ export const productsRelations = relations(products, ({ one, many }) => ({
     fields: [products.categoryId],
     references: [categories.id],
   }),
-  recipeIngredients: many(recipeIngredients),
+  components: many(productComponents),
   barcodes: many(productBarcodes),
 }));
 
@@ -218,10 +219,10 @@ export const orders = pgTable("orders", {
   customerPhone: varchar("customer_phone"),
   customerAddress: text("customer_address"),
   cashierId: varchar("cashier_id").references(() => users.id).notNull(),
-  baristaId: varchar("barista_id").references(() => users.id),
+  technicianId: varchar("technician_id").references(() => users.id),
   courierId: varchar("courier_id").references(() => users.id),
   status: orderStatusEnum("status").notNull().default('pending'),
-  sentToBarista: boolean("sent_to_barista").notNull().default(false),
+  sentToFulfillment: boolean("sent_to_fulfillment").notNull().default(false),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   tax: decimal("tax", { precision: 10, scale: 2 }).notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
@@ -386,8 +387,8 @@ export const insertCategorySchema = createInsertSchema(categories).omit({ id: tr
 export const insertProductSchema = createInsertSchema(products).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertFavoriteComboSchema = createInsertSchema(favoriteCombos).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertFavoriteComboItemSchema = createInsertSchema(favoriteComboItems).omit({ id: true, createdAt: true });
-export const insertIngredientSchema = createInsertSchema(ingredients).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertRecipeIngredientSchema = createInsertSchema(recipeIngredients).omit({ id: true, createdAt: true });
+export const insertComponentSchema = createInsertSchema(components).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProductComponentSchema = createInsertSchema(productComponents).omit({ id: true, createdAt: true });
 export const insertOrderSchema = createInsertSchema(orders).omit({ id: true, createdAt: true, updatedAt: true, readyAt: true, deliveredAt: true });
 export const insertOrderItemSchema = createInsertSchema(orderItems).omit({ id: true, createdAt: true });
 export const insertInventoryLogSchema = createInsertSchema(inventoryLog).omit({ id: true, createdAt: true });
@@ -433,10 +434,10 @@ export const options = pgTable("options", {
   displayOrder: integer("display_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
-export const optionIngredients = pgTable("option_ingredients", {
+export const optionComponents = pgTable("option_components", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   optionId: varchar("option_id").references(() => options.id).notNull(),
-  ingredientId: varchar("ingredient_id").references(() => ingredients.id).notNull(),
+  componentId: varchar("component_id").references(() => components.id).notNull(),
   quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -458,12 +459,12 @@ export const productOptionGroupsRelations = relations(productOptionGroups, ({ on
 }));
 export const optionsRelations = relations(options, ({ one, many }) => ({
   optionGroup: one(optionGroups, { fields: [options.optionGroupId], references: [optionGroups.id] }),
-  optionIngredients: many(optionIngredients),
+  optionComponents: many(optionComponents),
   orderItemOptions: many(orderItemOptions),
 }));
-export const optionIngredientsRelations = relations(optionIngredients, ({ one }) => ({
-  option: one(options, { fields: [optionIngredients.optionId], references: [options.id] }),
-  ingredient: one(ingredients, { fields: [optionIngredients.ingredientId], references: [ingredients.id] }),
+export const optionComponentsRelations = relations(optionComponents, ({ one }) => ({
+  option: one(options, { fields: [optionComponents.optionId], references: [options.id] }),
+  component: one(components, { fields: [optionComponents.componentId], references: [components.id] }),
 }));
 export const orderItemOptionsRelations = relations(orderItemOptions, ({ one }) => ({
   orderItem: one(orderItems, { fields: [orderItemOptions.orderItemId], references: [orderItems.id] }),
@@ -473,7 +474,7 @@ export const orderItemOptionsRelations = relations(orderItemOptions, ({ one }) =
 export const insertOptionGroupSchema = createInsertSchema(optionGroups).omit({ id: true, createdAt: true });
 export const insertProductOptionGroupSchema = createInsertSchema(productOptionGroups).omit({ id: true, createdAt: true });
 export const insertOptionSchema = createInsertSchema(options).omit({ id: true, createdAt: true });
-export const insertOptionIngredientSchema = createInsertSchema(optionIngredients).omit({ id: true, createdAt: true });
+export const insertOptionComponentSchema = createInsertSchema(optionComponents).omit({ id: true, createdAt: true });
 export const insertOrderItemOptionSchema = createInsertSchema(orderItemOptions).omit({ id: true, createdAt: true });
 // ---- Option System Types ----
 export type OptionGroup = typeof optionGroups.$inferSelect;
@@ -482,8 +483,8 @@ export type ProductOptionGroup = typeof productOptionGroups.$inferSelect;
 export type InsertProductOptionGroup = z.infer<typeof insertProductOptionGroupSchema>;
 export type Option = typeof options.$inferSelect;
 export type InsertOption = z.infer<typeof insertOptionSchema>;
-export type OptionIngredient = typeof optionIngredients.$inferSelect;
-export type InsertOptionIngredient = z.infer<typeof insertOptionIngredientSchema>;
+export type OptionComponent = typeof optionComponents.$inferSelect;
+export type InsertOptionComponent = z.infer<typeof insertOptionComponentSchema>;
 export type OrderItemOption = typeof orderItemOptions.$inferSelect;
 export type InsertOrderItemOption = z.infer<typeof insertOrderItemOptionSchema>;
 
@@ -498,10 +499,10 @@ export type FavoriteCombo = typeof favoriteCombos.$inferSelect;
 export type InsertFavoriteCombo = z.infer<typeof insertFavoriteComboSchema>;
 export type FavoriteComboItem = typeof favoriteComboItems.$inferSelect;
 export type InsertFavoriteComboItem = z.infer<typeof insertFavoriteComboItemSchema>;
-export type Ingredient = typeof ingredients.$inferSelect;
-export type InsertIngredient = z.infer<typeof insertIngredientSchema>;
-export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
-export type InsertRecipeIngredient = z.infer<typeof insertRecipeIngredientSchema>;
+export type Component = typeof components.$inferSelect;
+export type InsertComponent = z.infer<typeof insertComponentSchema>;
+export type ProductComponent = typeof productComponents.$inferSelect;
+export type InsertProductComponent = z.infer<typeof insertProductComponentSchema>;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;

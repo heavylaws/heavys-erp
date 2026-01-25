@@ -16,8 +16,8 @@ interface StockItem {
   name: string;
   stockQuantity: number | string;
   unit?: string;
-  type: 'product' | 'ingredient';
-  productType?: 'finished_good' | 'ingredient_based';
+  type: 'product' | 'component';
+  productType?: 'finished_good' | 'component_based';
 }
 
 interface StockAdjustmentDialogProps {
@@ -51,7 +51,7 @@ export function StockAdjustmentDialog({ item, children }: StockAdjustmentDialogP
 
       const endpoint = item.type === 'product'
         ? `/api/products/${item.id}/stock`
-        : `/api/ingredients/${item.id}/stock`;
+        : `/api/components/${item.id}/stock`;
 
       const res = await apiRequest("PATCH", endpoint, {
         quantityChange,
@@ -140,11 +140,11 @@ export function StockAdjustmentDialog({ item, children }: StockAdjustmentDialogP
           </DialogDescription>
         </DialogHeader>
 
-        {item.productType === 'ingredient_based' ? (
+        {item.productType === 'component_based' ? (
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold mb-1">Recipe-Based Product</p>
+              <p className="font-semibold mb-1">Bundle-Based Product</p>
               <p>
                 This product's stock is managed automatically based on its ingredients.
                 You should restock the individual ingredients instead.
@@ -254,7 +254,7 @@ export function StockAdjustmentDialog({ item, children }: StockAdjustmentDialogP
               </Button>
               <Button
                 onClick={() => stockAdjustmentMutation.mutate(adjustment)}
-                disabled={!isValidAdjustment() || stockAdjustmentMutation.isPending || (item as any).productType === 'ingredient_based'}
+                disabled={!isValidAdjustment() || stockAdjustmentMutation.isPending || (item as any).productType === 'component_based'}
                 data-testid="button-confirm-adjustment"
               >
                 {stockAdjustmentMutation.isPending ? 'Updating...' : 'Confirm Adjustment'}

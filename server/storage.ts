@@ -3,8 +3,8 @@ import {
   categories,
   products,
   productBarcodes,
-  ingredients,
-  recipeIngredients,
+  components,
+  productComponents,
   orders,
   orderItems,
   inventoryLog,
@@ -19,7 +19,7 @@ import {
   optionGroups,
   productOptionGroups,
   options as optionTable,
-  optionIngredients,
+  optionComponents,
   orderItemOptions,
   favoriteCombos,
   favoriteComboItems,
@@ -31,10 +31,10 @@ import {
   type InsertCategory,
   type Product,
   type InsertProduct,
-  type Ingredient,
-  type InsertIngredient,
-  type RecipeIngredient,
-  type InsertRecipeIngredient,
+  type Component,
+  type InsertComponent,
+  type ProductComponent,
+  type InsertProductComponent,
   type Order,
   type InsertOrder,
   type OrderItem,
@@ -61,8 +61,8 @@ import {
   type InsertProductOptionGroup,
   type Option,
   type InsertOption,
-  type OptionIngredient,
-  type InsertOptionIngredient,
+  type OptionComponent,
+  type InsertOptionComponent,
   type OrderItemOption,
   type InsertOrderItemOption,
   type FavoriteCombo,
@@ -110,27 +110,27 @@ export interface IStorage {
   deleteProduct(id: string): Promise<void>;
   updateProductStock(id: string, quantity: number, userId: string, reason: string): Promise<void>;
 
-  // Ingredient operations
-  getIngredients(search?: string): Promise<Ingredient[]>;
-  getIngredient(id: string): Promise<Ingredient | undefined>;
-  createIngredient(ingredient: InsertIngredient): Promise<Ingredient>;
-  updateIngredient(id: string, ingredient: Partial<InsertIngredient>): Promise<Ingredient>;
-  deleteIngredient(id: string): Promise<void>;
-  updateIngredientStock(id: string, quantity: number, userId: string, reason: string): Promise<void>;
+  // Component operations
+  getComponents(search?: string): Promise<Component[]>;
+  getComponent(id: string): Promise<Component | undefined>;
+  createComponent(component: InsertComponent): Promise<Component>;
+  updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component>;
+  deleteComponent(id: string): Promise<void>;
+  updateComponentStock(id: string, quantity: number, userId: string, reason: string): Promise<void>;
 
-  // Recipe operations
-  getRecipeIngredients(productId: string): Promise<RecipeIngredient[]>;
-  getOptionalRecipeIngredients(productId: string): Promise<Array<{
-    recipeIngredientId: string;
-    ingredientId: string;
+  // Bundle/Product Component operations
+  getProductComponents(productId: string): Promise<ProductComponent[]>;
+  getOptionalProductComponents(productId: string): Promise<Array<{
+    productComponentId: string;
+    componentId: string;
     quantity: string;
-    ingredientName: string;
+    componentName: string;
     unit: string | null;
     stockQuantity: string;
     minThreshold: string;
   }>>;
-  createRecipeIngredient(recipeIngredient: InsertRecipeIngredient): Promise<RecipeIngredient>;
-  deleteRecipeIngredient(id: string): Promise<void>;
+  createProductComponent(productComponent: InsertProductComponent): Promise<ProductComponent>;
+  deleteProductComponent(id: string): Promise<void>;
 
   // Order operations
   getOrders(limit?: number): Promise<Order[]>;
@@ -153,7 +153,7 @@ export interface IStorage {
 
   // Inventory operations
   getLowStockProducts(): Promise<Product[]>;
-  getLowStockIngredients(): Promise<Ingredient[]>;
+  getLowStockComponents(): Promise<Component[]>;
   createInventoryLog(log: InsertInventoryLog): Promise<InventoryLog>;
   getInventoryLogs(limit?: number): Promise<InventoryLog[]>;
 
@@ -214,14 +214,14 @@ export interface IStorage {
   updateOption(id: string, data: Partial<InsertOption>): Promise<Option>;
   deleteOption(id: string): Promise<void>;
 
-  getOptionIngredients(optionId: string): Promise<OptionIngredient[]>;
-  addOptionIngredient(data: InsertOptionIngredient): Promise<OptionIngredient>;
-  deleteOptionIngredient(id: string): Promise<void>;
+  getOptionComponents(optionId: string): Promise<OptionComponent[]>;
+  addOptionComponent(data: InsertOptionComponent): Promise<OptionComponent>;
+  deleteOptionComponent(id: string): Promise<void>;
   // Order item options
   getOrderItemOptions(orderItemId: string): Promise<OrderItemOption[]>;
   createOrderItemOption(data: InsertOrderItemOption): Promise<OrderItemOption>;
   getOptionsByIds(ids: string[]): Promise<Option[]>;
-  getOptionIngredientsByOptionIds(optionIds: string[]): Promise<OptionIngredient[]>;
+  getOptionComponentsByOptionIds(optionIds: string[]): Promise<OptionComponent[]>;
 
   // Favorite combo operations
   getFavoriteCombos(includeInactive?: boolean): Promise<FavoriteComboWithItems[]>;
@@ -519,21 +519,21 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // Ingredient operations
-  async getIngredients(search?: string): Promise<Ingredient[]> {
-    const conditions: any[] = [eq(ingredients.isActive, true)];
+  // Component operations
+  async getComponents(search?: string): Promise<Component[]> {
+    const conditions: any[] = [eq(components.isActive, true)];
     if (search && search.trim().length > 0) {
       const term = `%${search.trim().toLowerCase()}%`;
-      conditions.push(sql`lower(${ingredients.name}) like ${term}`);
+      conditions.push(sql`lower(${components.name}) like ${term}`);
     }
 
     const whereExpr = conditions.length === 1 ? conditions[0] : and(...conditions as any);
 
     return db
       .select()
-      .from(ingredients)
+      .from(components)
       .where(whereExpr as any)
-      .orderBy(asc(ingredients.name));
+      .orderBy(asc(components.name));
   }
 
   // Receipt Settings
@@ -561,56 +561,56 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getIngredient(id: string): Promise<Ingredient | undefined> {
-    const [ingredient] = await db.select().from(ingredients).where(eq(ingredients.id, id));
-    return ingredient;
+  async getComponent(id: string): Promise<Component | undefined> {
+    const [component] = await db.select().from(components).where(eq(components.id, id));
+    return component;
   }
 
-  async createIngredient(ingredient: InsertIngredient): Promise<Ingredient> {
-    const [newIngredient] = await db.insert(ingredients).values(ingredient).returning();
-    return newIngredient;
+  async createComponent(component: InsertComponent): Promise<Component> {
+    const [newComponent] = await db.insert(components).values(component).returning();
+    return newComponent;
   }
 
-  async updateIngredient(id: string, ingredient: Partial<InsertIngredient>): Promise<Ingredient> {
-    const [updatedIngredient] = await db
-      .update(ingredients)
-      .set({ ...ingredient, updatedAt: new Date() })
-      .where(eq(ingredients.id, id))
+  async updateComponent(id: string, component: Partial<InsertComponent>): Promise<Component> {
+    const [updatedComponent] = await db
+      .update(components)
+      .set({ ...component, updatedAt: new Date() })
+      .where(eq(components.id, id))
       .returning();
-    return updatedIngredient;
+    return updatedComponent;
   }
 
-  async deleteIngredient(id: string): Promise<void> {
+  async deleteComponent(id: string): Promise<void> {
     try {
-      const result = await db.update(ingredients).set({ isActive: false }).where(eq(ingredients.id, id));
+      const result = await db.update(components).set({ isActive: false }).where(eq(components.id, id));
       if (!result.rowCount || result.rowCount === 0) {
-        throw new Error('Ingredient not found');
+        throw new Error('Component not found');
       }
     } catch (error) {
-      console.error('Error deleting ingredient:', error);
+      console.error('Error deleting component:', error);
       throw error;
     }
   }
 
-  async updateIngredientStock(id: string, quantityChange: number, userId: string, reason: string): Promise<void> {
-    const [ingredient] = await db.select().from(ingredients).where(eq(ingredients.id, id));
-    if (!ingredient) throw new Error('Ingredient not found');
+  async updateComponentStock(id: string, quantityChange: number, userId: string, reason: string): Promise<void> {
+    const [component] = await db.select().from(components).where(eq(components.id, id));
+    if (!component) throw new Error('Component not found');
 
-    const currentQuantity = parseFloat(ingredient.stockQuantity);
+    const currentQuantity = parseFloat(component.stockQuantity);
     const newQuantity = currentQuantity + quantityChange;
 
     await db.transaction(async (tx: any) => {
       await tx
-        .update(ingredients)
+        .update(components)
         .set({ stockQuantity: String(newQuantity), updatedAt: new Date() })
-        .where(eq(ingredients.id, id));
+        .where(eq(components.id, id));
 
       await tx.insert(inventoryLog).values({
-        type: 'ingredient',
+        type: 'component',
         itemId: id,
         action: quantityChange > 0 ? 'restock' : 'sale',
         quantityChange: String(quantityChange),
-        previousQuantity: ingredient.stockQuantity,
+        previousQuantity: component.stockQuantity,
         newQuantity: String(newQuantity),
         userId,
         reason,
@@ -618,54 +618,54 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // Recipe operations
-  async getRecipeIngredients(productId: string): Promise<RecipeIngredient[]> {
-    return db.select().from(recipeIngredients).where(eq(recipeIngredients.productId, productId));
+  // Product Component operations
+  async getProductComponents(productId: string): Promise<ProductComponent[]> {
+    return db.select().from(productComponents).where(eq(productComponents.productId, productId));
   }
 
-  async getOptionalRecipeIngredients(productId: string): Promise<Array<{
-    recipeIngredientId: string;
-    ingredientId: string;
+  async getOptionalProductComponents(productId: string): Promise<Array<{
+    productComponentId: string;
+    componentId: string;
     quantity: string;
-    ingredientName: string;
+    componentName: string;
     unit: string | null;
     stockQuantity: string;
     minThreshold: string;
   }>> {
     return db
       .select({
-        recipeIngredientId: recipeIngredients.id,
-        ingredientId: recipeIngredients.ingredientId,
-        quantity: recipeIngredients.quantity,
-        ingredientName: ingredients.name,
-        unit: ingredients.unit,
-        stockQuantity: ingredients.stockQuantity,
-        minThreshold: ingredients.minThreshold,
+        productComponentId: productComponents.id,
+        componentId: productComponents.componentId,
+        quantity: productComponents.quantity,
+        componentName: components.name,
+        unit: components.unit,
+        stockQuantity: components.stockQuantity,
+        minThreshold: components.minThreshold,
       })
-      .from(recipeIngredients)
-      .innerJoin(ingredients, eq(recipeIngredients.ingredientId, ingredients.id))
+      .from(productComponents)
+      .innerJoin(components, eq(productComponents.componentId, components.id))
       .where(
         and(
-          eq(recipeIngredients.productId, productId),
-          eq(recipeIngredients.isOptional, true),
-          eq(ingredients.isActive, true)
+          eq(productComponents.productId, productId),
+          eq(productComponents.isOptional, true),
+          eq(components.isActive, true)
         )
       )
-      .orderBy(asc(ingredients.name));
+      .orderBy(asc(components.name));
   }
 
-  async createRecipeIngredient(recipeIngredient: InsertRecipeIngredient): Promise<RecipeIngredient> {
-    const [newRecipeIngredient] = await db.insert(recipeIngredients).values(recipeIngredient).returning();
-    return newRecipeIngredient;
+  async createProductComponent(productComponent: InsertProductComponent): Promise<ProductComponent> {
+    const [newProductComponent] = await db.insert(productComponents).values(productComponent).returning();
+    return newProductComponent;
   }
 
-  async deleteRecipeIngredient(id: string): Promise<void> {
-    await db.delete(recipeIngredients).where(eq(recipeIngredients.id, id));
+  async deleteProductComponent(id: string): Promise<void> {
+    await db.delete(productComponents).where(eq(productComponents.id, id));
   }
 
-  async updateRecipeIngredient(id: string, data: Partial<InsertRecipeIngredient>): Promise<RecipeIngredient> {
-    const [updated] = await db.update(recipeIngredients).set(data).where(eq(recipeIngredients.id, id)).returning();
-    if (!updated) throw new Error('Recipe ingredient not found');
+  async updateProductComponent(id: string, data: Partial<InsertProductComponent>): Promise<ProductComponent> {
+    const [updated] = await db.update(productComponents).set(data).where(eq(productComponents.id, id)).returning();
+    if (!updated) throw new Error('Product component not found');
     return updated;
   }
 
@@ -782,9 +782,8 @@ export class DatabaseStorage implements IStorage {
     const createdOrder = await db.transaction(async (tx: any) => {
       const [newOrder] = await tx.insert(orders).values(order).returning();
 
-      // Build caches for recipe ingredients and optional ingredients to avoid repeated DB calls
-      const recipeIngredientCache: Record<string, RecipeIngredient[]> = {};
-      const optionalIngredientCache: Record<string, any[]> = {};
+      // Build caches for product components and optional components to avoid repeated DB calls
+      const productComponentCache: Record<string, ProductComponent[]> = {};
 
       for (const item of items) {
         // Robust price handling: handle string/number inputs and varied field names
@@ -825,32 +824,32 @@ export class DatabaseStorage implements IStorage {
             reason: `Sale - Order #${newOrder.orderNumber}`,
           });
         } else {
-          // Ingredient-based product - deduct recipe ingredients
-          if (!recipeIngredientCache[item.productId]) {
-            recipeIngredientCache[item.productId] = await tx.select().from(recipeIngredients).where(eq(recipeIngredients.productId, item.productId));
+          // Component-based product - deduct product components
+          if (!productComponentCache[item.productId]) {
+            productComponentCache[item.productId] = await tx.select().from(productComponents).where(eq(productComponents.productId, item.productId));
           }
-          const riList = recipeIngredientCache[item.productId] || [];
-          for (const ri of riList) {
-            if (ri.isOptional && !((item as any).__selectedOptionalIngredientIds || []).includes(ri.id)) continue;
-            const perUnitQty = parseFloat(String(ri.quantity || '0'));
+          const pcList = productComponentCache[item.productId] || [];
+          for (const pc of pcList) {
+            if (pc.isOptional && !((item as any).__selectedOptionalIngredientIds || []).includes(pc.id)) continue;
+            const perUnitQty = parseFloat(String(pc.quantity || '0'));
             if (isNaN(perUnitQty) || perUnitQty <= 0) continue;
             const totalQty = perUnitQty * item.quantity;
-            // Atomic ingredient decrement
-            // read previous ingredient stock
-            const [ingredientRow] = await tx.select().from(ingredients).where(eq(ingredients.id, ri.ingredientId));
-            if (!ingredientRow) {
-              throw new Error(`Ingredient ${ri.ingredientId} not found`);
+            // Atomic component decrement
+            // read previous component stock
+            const [componentRow] = await tx.select().from(components).where(eq(components.id, pc.componentId));
+            if (!componentRow) {
+              throw new Error(`Component ${pc.componentId} not found`);
             }
-            const prevStock = Number(ingredientRow.stockQuantity);
-            const updateSql = sql`UPDATE ${ingredients} SET stock_quantity = (stock_quantity::numeric - ${String(totalQty)})::numeric, updated_at = now() WHERE id = ${ri.ingredientId} AND stock_quantity >= ${String(totalQty)}::numeric RETURNING stock_quantity`;
+            const prevStock = Number(componentRow.stockQuantity);
+            const updateSql = sql`UPDATE ${components} SET stock_quantity = (stock_quantity::numeric - ${String(totalQty)})::numeric, updated_at = now() WHERE id = ${pc.componentId} AND stock_quantity >= ${String(totalQty)}::numeric RETURNING stock_quantity`;
             const result: any = await tx.execute(updateSql);
             if (!Array.isArray(result) || result.length === 0) {
-              throw new Error(`Insufficient ingredient stock for ${ri.ingredientId} used by product ${product.name}`);
+              throw new Error(`Insufficient component stock for ${pc.componentId} used by product ${product.name}`);
             }
             const newQty = result[0].stock_quantity;
             await tx.insert(inventoryLog).values({
-              type: 'ingredient',
-              itemId: ri.ingredientId,
+              type: 'component',
+              itemId: pc.componentId,
               action: 'sale',
               quantityChange: String(-totalQty),
               previousQuantity: String(prevStock),
@@ -873,11 +872,11 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
-      // If sentToBarista is true, create an activity log entry (audit)
-      if ((order as any).sentToBarista) {
+      // If sentToFulfillment is true, create an activity log entry (audit)
+      if ((order as any).sentToFulfillment) {
         await tx.insert(activityLog).values({
           userId,
-          action: 'send_to_barista',
+          action: 'send_to_fulfillment',
           success: true,
           details: { orderId: newOrder.id, orderNumber: newOrder.orderNumber },
         });
@@ -909,7 +908,7 @@ export class DatabaseStorage implements IStorage {
 
   async getOrdersByUserId(userId: string): Promise<Order[]> {
     return db.select().from(orders)
-      .where(or(eq(orders.cashierId, userId), eq(orders.baristaId, userId), eq(orders.courierId, userId)))
+      .where(or(eq(orders.cashierId, userId), eq(orders.technicianId, userId), eq(orders.courierId, userId)))
       .orderBy(desc(orders.createdAt));
   }
 
@@ -932,7 +931,7 @@ export class DatabaseStorage implements IStorage {
           name: products.name,
           description: products.description,
           price: products.price,
-          forBarista: products.forBarista,
+          forTechnician: products.requiresFulfillment,
           type: products.type
         }
       })
@@ -990,17 +989,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(products.stockQuantity));
   }
 
-  async getLowStockIngredients(): Promise<Ingredient[]> {
+  async getLowStockComponents(): Promise<Component[]> {
     return db
       .select()
-      .from(ingredients)
+      .from(components)
       .where(
         and(
-          eq(ingredients.isActive, true),
-          sql`${ingredients.stockQuantity} <= ${ingredients.minThreshold}`
+          eq(components.isActive, true),
+          sql`${components.stockQuantity} <= ${components.minThreshold}`
         )
       )
-      .orderBy(asc(ingredients.stockQuantity));
+      .orderBy(asc(components.stockQuantity));
   }
 
   async createInventoryLog(log: InsertInventoryLog): Promise<InventoryLog> {
@@ -1857,21 +1856,21 @@ export class DatabaseStorage implements IStorage {
     await db.update(optionTable).set({ isActive: false }).where(eq(optionTable.id, id));
   }
 
-  // Option Ingredients
-  async getOptionIngredients(optionId: string): Promise<OptionIngredient[]> {
+  // Option Components
+  async getOptionComponents(optionId: string): Promise<OptionComponent[]> {
     if (!ENABLE_OPTIONS_SYSTEM) return [];
-    return db.select().from(optionIngredients).where(eq(optionIngredients.optionId, optionId));
+    return db.select().from(optionComponents).where(eq(optionComponents.optionId, optionId));
   }
 
-  async addOptionIngredient(data: InsertOptionIngredient): Promise<OptionIngredient> {
+  async addOptionComponent(data: InsertOptionComponent): Promise<OptionComponent> {
     this.ensureOptionsEnabled();
-    const [row] = await db.insert(optionIngredients).values(data).returning();
+    const [row] = await db.insert(optionComponents).values(data).returning();
     return row;
   }
 
-  async deleteOptionIngredient(id: string): Promise<void> {
+  async deleteOptionComponent(id: string): Promise<void> {
     this.ensureOptionsEnabled();
-    await db.delete(optionIngredients).where(eq(optionIngredients.id, id));
+    await db.delete(optionComponents).where(eq(optionComponents.id, id));
   }
 
   async getOrderItemOptions(orderItemId: string): Promise<OrderItemOption[]> {
@@ -1890,9 +1889,9 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(optionTable).where(inArray(optionTable.id, ids));
   }
 
-  async getOptionIngredientsByOptionIds(optionIds: string[]): Promise<OptionIngredient[]> {
+  async getOptionComponentsByOptionIds(optionIds: string[]): Promise<OptionComponent[]> {
     if (!ENABLE_OPTIONS_SYSTEM || optionIds.length === 0) return [];
-    return db.select().from(optionIngredients).where(inArray(optionIngredients.optionId, optionIds));
+    return db.select().from(optionComponents).where(inArray(optionComponents.optionId, optionIds));
   }
 
   private async hydrateFavoriteCombos(combos: FavoriteCombo[]): Promise<FavoriteComboWithItems[]> {

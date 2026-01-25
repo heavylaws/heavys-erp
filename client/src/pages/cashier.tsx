@@ -72,7 +72,7 @@ export default function CashierPOS() {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [activeOrders, setActiveOrders] = useState<CurrentOrder[]>([]);
   const [currentOrderId, setCurrentOrderId] = useState<string>("");
-  const [autoSendToBaristaOnCash, setAutoSendToBaristaOnCash] = useState<boolean>(false);
+  const [autoSendToFulfillmentOnCash, setAutoSendToFulfillmentOnCash] = useState<boolean>(false);
   const [showShiftSummary, setShowShiftSummary] = useState(false);
   const [completedShift, setCompletedShift] = useState<any>(null);
 
@@ -96,7 +96,7 @@ export default function CashierPOS() {
     if (message.type === 'order_update' || message.type === 'ORDER_UPDATE') {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
     }
   });
 
@@ -208,7 +208,7 @@ export default function CashierPOS() {
     })();
   }, [compactView]);
 
-  // Persist toggle setting for auto send-to-barista on cash
+  // Persist toggle setting for auto send-to-fulfillment on cash
   useEffect(() => {
     (async () => {
       try {
@@ -216,13 +216,13 @@ export default function CashierPOS() {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autoSendToBaristaOnCash }),
+          body: JSON.stringify({ autoSendToFulfillmentOnCash }),
         });
       } catch (e) {
         // ignore server errors; UI is allowed to fallback to local variable
       }
     })();
-  }, [autoSendToBaristaOnCash]);
+  }, [autoSendToFulfillmentOnCash]);
 
   // On mount, fetch the settings from server and override local preference
   useEffect(() => {
@@ -234,8 +234,8 @@ export default function CashierPOS() {
           if (typeof settings?.compactView === 'boolean') {
             setCompactView(settings.compactView);
           }
-          if (typeof settings?.autoSendToBaristaOnCash === 'boolean') {
-            setAutoSendToBaristaOnCash(settings.autoSendToBaristaOnCash);
+          if (typeof settings?.autoSendToFulfillmentOnCash === 'boolean') {
+            setAutoSendToFulfillmentOnCash(settings.autoSendToFulfillmentOnCash);
           }
         }
       } catch (_e) {
@@ -291,7 +291,7 @@ export default function CashierPOS() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
       toast({
         title: "Order Processed",
         description: "Order has been successfully created.",
@@ -312,7 +312,7 @@ export default function CashierPOS() {
 
   // Update order mutation for payments and send-to-barista updates
   const updateOrderMutation = useMutation({
-    mutationFn: async ({ orderId, paymentMethod, sentToBarista, status }: { orderId: string; paymentMethod?: string; sentToBarista?: boolean, status?: string }) => {
+    mutationFn: async ({ orderId, paymentMethod, sentToFulfillment, status }: { orderId: string; paymentMethod?: string; sentToFulfillment?: boolean, status?: string }) => {
       const body: any = {};
       if (paymentMethod) {
         body.paymentMethod = paymentMethod;
@@ -321,8 +321,8 @@ export default function CashierPOS() {
       if (status) {
         body.status = status;
       }
-      if (typeof sentToBarista === 'boolean') {
-        body.sentToBarista = sentToBarista;
+      if (typeof sentToFulfillment === 'boolean') {
+        body.sentToFulfillment = sentToFulfillment;
       }
 
       const response = await fetch(`/api/orders/${orderId}`, {
@@ -343,7 +343,7 @@ export default function CashierPOS() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -393,9 +393,9 @@ export default function CashierPOS() {
   };
 
   // Calculate available stock for display (actual stock minus items in all active carts)
-  // For ingredient-based products, we don't track product-level stock, so we return a high number to allow addition
+  // For component-based products, we don't track product-level stock, so we return a high number to allow addition
   const getAvailableStock = (product: Product) => {
-    if (product.type === 'ingredient_based') return 9999;
+    if (product.type === 'component_based') return 9999;
 
     let reservedQuantity = 0;
     const actualStock = Number(product.stockQuantity);
@@ -479,10 +479,11 @@ export default function CashierPOS() {
     const currentOrder = getCurrentOrder();
     if (!currentOrder || currentOrder.items.length === 0) return;
 
-    // Check if order effectively requires barista attention
-    const hasBaristaItems = currentOrder.items.some(item => item.product?.forBarista);
-    // Auto-send if it's Cash and either the toggle is ON OR it explicitly contains barista items
-    const shouldSendToBarista = (paymentMethod === 'cash' && (!!autoSendToBaristaOnCash || hasBaristaItems));
+    // Check if order effectively requires technician attention
+    // Check if order effectively requires technician attention
+    const hasTechnicianItems = currentOrder.items.some(item => item.product?.requiresFulfillment);
+    // Auto-send if it's Cash and either the toggle is ON OR it explicitly contains technician items
+    const shouldSendToFulfillment = (paymentMethod === 'cash' && (!!autoSendToFulfillmentOnCash || hasTechnicianItems));
 
     const orderData = {
       subtotal: currentOrder.total.toFixed(2), // Tax-inclusive pricing
@@ -515,10 +516,10 @@ export default function CashierPOS() {
           order: updateData,
           items
         });
-        // If we should auto-send to barista, mark the existing order as sent after the update
-        if (shouldSendToBarista) {
-          markOrderSentToBarista((currentOrder as any).originalOrderId);
-          toast({ title: "Order Sent to Barista", description: "Order has been auto-sent to the barista after payment." });
+        // If we should auto-send to fulfillment, mark the existing order as sent after the update
+        if (shouldSendToFulfillment) {
+          markOrderSentToFulfillment((currentOrder as any).originalOrderId);
+          toast({ title: "Order Sent to Fulfillment", description: "Order has been auto-sent to fulfillment after payment." });
         }
 
         toast({
@@ -528,10 +529,10 @@ export default function CashierPOS() {
       } else {
         // Regular new order
         const createdOrder = await createOrderMutation.mutateAsync({ order: orderData, items });
-        // If setting is enabled, mark this newly created order as sent to barista
-        if (shouldSendToBarista && createdOrder?.id) {
-          markOrderSentToBarista(createdOrder.id);
-          toast({ title: "Order Sent to Barista", description: "Order has been auto-sent to the barista after payment." });
+        // If setting is enabled, mark this newly created order as sent to fulfillment
+        if (shouldSendToFulfillment && createdOrder?.id) {
+          markOrderSentToFulfillment(createdOrder.id);
+          toast({ title: "Order Sent to Fulfillment", description: "Order has been auto-sent to fulfillment after payment." });
         }
       }
 
@@ -570,13 +571,13 @@ export default function CashierPOS() {
   // Process payment for existing pending orders
   const processOrderPayment = async (orderId: string, paymentMethod: string, orderTotal: number) => {
     // Process the payment
-    // Decide whether to send to barista. Only auto-send for cash payments when the setting is enabled
-    const shouldSendToBarista = paymentMethod === 'cash' && !!autoSendToBaristaOnCash;
+    // Decide whether to send to fulfillment. Only auto-send for cash payments when the setting is enabled
+    const shouldSendToFulfillment = paymentMethod === 'cash' && !!autoSendToFulfillmentOnCash;
     updateOrderMutation.mutate({ orderId, paymentMethod });
-    if (shouldSendToBarista) {
-      // After marking the order as paid, also mark it as sent to barista
-      markOrderSentToBarista(orderId);
-      toast({ title: "Order Sent to Barista", description: "Order has been auto-sent to the barista after payment." });
+    if (shouldSendToFulfillment) {
+      // After marking the order as paid, also mark it as sent to fulfillment
+      markOrderSentToFulfillment(orderId);
+      toast({ title: "Order Sent to Fulfillment", description: "Order has been auto-sent to fulfillment after payment." });
     }
 
     // Update active shift if user has one
@@ -635,16 +636,16 @@ export default function CashierPOS() {
     }
   };
 
-  // Send current order to barista without processing payment
-  const markOrderSentToBarista = (orderId: string) => {
-    updateOrderMutation.mutate({ orderId, sentToBarista: true });
+  // Send current order to fulfillment without processing payment
+  const markOrderSentToFulfillment = (orderId: string) => {
+    updateOrderMutation.mutate({ orderId, sentToFulfillment: true });
   };
 
-  const sendCurrentOrderToBarista = async () => {
+  const sendCurrentOrderToFulfillment = async () => {
     const currentOrder = getCurrentOrder();
     if (!currentOrder || currentOrder.items.length === 0) return;
 
-    // First create a normal order (status pending), then flag it as sentToBarista
+    // First create a normal order (status pending), then flag it as sentToFulfillment
     const baseOrderData = {
       subtotal: currentOrder.total.toFixed(2),
       tax: "0.00",
@@ -664,30 +665,30 @@ export default function CashierPOS() {
     try {
       const isEditedOrder = (currentOrder as any).originalOrderId;
 
-      // If editing an existing order, just patch it with sentToBarista
+      // If editing an existing order, just patch it with sentToFulfillment
       if (isEditedOrder) {
-        markOrderSentToBarista((currentOrder as any).originalOrderId);
+        markOrderSentToFulfillment((currentOrder as any).originalOrderId);
       } else {
         const createdOrder = await createOrderMutation.mutateAsync({ order: baseOrderData, items });
 
-        // After successful creation, flag it as sent to barista
+        // After successful creation, flag it as sent to fulfillment
         if (createdOrder?.id) {
-          markOrderSentToBarista(createdOrder.id);
+          markOrderSentToFulfillment(createdOrder.id);
         }
       }
 
       toast({
-        title: "Order Sent to Barista",
-        description: "The order has been sent to the barista.",
+        title: "Order Sent to Fulfillment",
+        description: "The order has been sent to fulfillment.",
       });
 
       setActiveOrders(prev => prev.filter(order => order.id !== currentOrderId));
       createNewOrder();
     } catch (error) {
-      console.error('Send to barista failed:', error);
+      console.error('Send to fulfillment failed:', error);
       toast({
         title: "Send Failed",
-        description: "There was an error sending the order to barista. Please try again.",
+        description: "There was an error sending the order to fulfillment. Please try again.",
         variant: "destructive",
       });
     }
@@ -1052,8 +1053,8 @@ export default function CashierPOS() {
                       </div>
                       <span className="text-xs text-gray-500 stock-indicator">
                         {(() => {
-                          if (product.type === 'ingredient_based') {
-                            return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Recipe Item</Badge>;
+                          if (product.type === 'component_based') {
+                            return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Bundle Item</Badge>;
                           }
 
                           const availableStock = getAvailableStock(product);
@@ -1209,12 +1210,12 @@ export default function CashierPOS() {
                               Cash
                             </Button>
                             <Button
-                              onClick={() => updateOrderMutation.mutate({ orderId: order.id, sentToBarista: true })}
+                              onClick={() => updateOrderMutation.mutate({ orderId: order.id, sentToFulfillment: true })}
                               className="flex-1"
                               disabled={updateOrderMutation.isPending || deleteOrderMutation.isPending}
                             >
                               <Send className="h-4 w-4 mr-1" />
-                              Send to Barista
+                              Send to Fulfillment
                             </Button>
                           </div>
                         </div>
@@ -1387,10 +1388,10 @@ export default function CashierPOS() {
 
                     <div className="space-y-3 payment-section">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm text-gray-600">Auto send to barista on cash</div>
+                        <div className="text-sm text-gray-600">Auto send to fulfillment on cash</div>
                         <Switch
-                          checked={autoSendToBaristaOnCash}
-                          onCheckedChange={(val: boolean) => setAutoSendToBaristaOnCash(!!val)}
+                          checked={autoSendToFulfillmentOnCash}
+                          onCheckedChange={(val: boolean) => setAutoSendToFulfillmentOnCash(!!val)}
                         />
                       </div>
                       {/* Show different buttons for editing vs new orders */}
@@ -1435,12 +1436,12 @@ export default function CashierPOS() {
                             Cash
                           </Button>
                           <Button
-                            onClick={sendCurrentOrderToBarista}
+                            onClick={sendCurrentOrderToFulfillment}
                             className="py-4"
                             disabled={currentOrder.items.length === 0 || createOrderMutation.isPending}
                           >
                             <Send className="h-5 w-5 mr-2" />
-                            Send to Barista
+                            Send to Fulfillment
                           </Button>
                         </div>
                       )}

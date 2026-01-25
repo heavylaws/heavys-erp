@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -33,7 +34,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Loader2, X } from "lucide-react";
 
 const addProductSchema = z.object({
@@ -48,7 +48,7 @@ const addProductSchema = z.object({
   type: z.enum(["finished_good", "ingredient_based"]).default("finished_good"),
   stockQuantity: z.coerce.number().min(0, "Stock quantity must be 0 or greater").default(0),
   minThreshold: z.coerce.number().min(0, "Minimum threshold must be 0 or greater").default(5),
-  forBarista: z.boolean().default(false),
+  requiresFulfillment: z.boolean().default(false),
 });
 
 type AddProductForm = z.infer<typeof addProductSchema>;
@@ -85,7 +85,7 @@ export function AddProductDialog({
       type: "finished_good",
       stockQuantity: 0,
       minThreshold: 5,
-      forBarista: false,
+      requiresFulfillment: false,
     },
   });
 
@@ -192,17 +192,19 @@ export function AddProductDialog({
         {children || defaultTrigger}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Add New Product</DialogTitle>
-          <DialogDescription>
-            Create a new product for your cafe menu. Make sure to set appropriate pricing and stock levels.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0">
+        <div className="p-6 pb-2">
+          <DialogHeader>
+            <DialogTitle>Add New Product</DialogTitle>
+            <DialogDescription>
+              Create a new product for your menu. Make sure to set appropriate pricing and stock levels.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <ScrollArea className="flex-1 pr-4 -mr-4">
+        <div className="flex-1 overflow-y-auto px-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4">
+            <form id="add-product-form" onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4 py-4">
               <FormField
                 control={form.control}
                 name="name"
@@ -211,7 +213,7 @@ export function AddProductDialog({
                     <FormLabel>Product Name *</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., Cappuccino, Ham Sandwich"
+                        placeholder="e.g., Cappuccino, Hammer"
                         {...field}
                       />
                     </FormControl>
@@ -430,7 +432,7 @@ export function AddProductDialog({
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="finished_good">Finished Good</SelectItem>
-                        <SelectItem value="ingredient_based">Recipe-Based</SelectItem>
+                        <SelectItem value="component_based">Bundle / Component Based</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -440,13 +442,13 @@ export function AddProductDialog({
 
               <FormField
                 control={form.control}
-                name="forBarista"
+                name="requiresFulfillment"
                 render={({ field }) => (
                   <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                     <div className="space-y-0.5">
-                      <FormLabel>For Barista</FormLabel>
+                      <FormLabel>Required Fulfillment (Technician)</FormLabel>
                       <span className="text-sm text-muted-foreground">
-                        When enabled, this item will appear on the barista screen.
+                        When enabled, this item will appear on the technician/fulfillment screen.
                       </span>
                     </div>
                     <FormControl>
@@ -496,29 +498,30 @@ export function AddProductDialog({
                   )}
                 />
               </div>
-
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                  disabled={createProductMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createProductMutation.isPending}
-                >
-                  {createProductMutation.isPending && (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  )}
-                  Create Product
-                </Button>
-              </div>
             </form>
           </Form>
-        </ScrollArea>
+        </div>
+
+        <DialogFooter className="p-6 pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setOpen(false)}
+            disabled={createProductMutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="add-product-form"
+            disabled={createProductMutation.isPending}
+          >
+            {createProductMutation.isPending && (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            )}
+            Create Product
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog >
   );

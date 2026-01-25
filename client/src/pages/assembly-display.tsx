@@ -3,12 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, CheckCircle, ChefHat, AlertCircle } from "lucide-react";
+import { Clock, CheckCircle, Wrench, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Order } from "@shared/schema";
 
-export default function KitchenDisplay() {
+export default function AssemblyDisplay() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const [isConnected, setIsConnected] = useState(false);
@@ -91,9 +91,9 @@ export default function KitchenDisplay() {
             {/* Header */}
             <div className="flex items-center justify-between mb-6 bg-neutral-800 p-4 rounded-lg shadow-lg">
                 <div className="flex items-center gap-3">
-                    <ChefHat className="h-8 w-8 text-primary" />
+                    <Wrench className="h-8 w-8 text-primary" />
                     <div>
-                        <h1 className="text-2xl font-bold">Kitchen Display System</h1>
+                        <h1 className="text-2xl font-bold">Assembly Display System</h1>
                         <p className="text-neutral-400 text-sm">Real-time Order Feed</p>
                     </div>
                 </div>
@@ -160,7 +160,7 @@ export default function KitchenDisplay() {
                                                 className="w-full bg-blue-600 hover:bg-blue-700"
                                                 onClick={() => updateStatusMutation.mutate({ id: order.id, status: 'preparing' })}
                                             >
-                                                Start Prep
+                                                Start Assembly
                                             </Button>
                                         )}
                                         <Button

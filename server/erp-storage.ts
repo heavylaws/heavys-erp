@@ -77,7 +77,7 @@ export async function getProductSuppliers(productId: string): Promise<(ProductSu
         .innerJoin(suppliers, eq(productSuppliers.supplierId, suppliers.id))
         .where(eq(productSuppliers.productId, productId));
 
-    return results.map((r) => ({
+    return results.map((r: any) => ({
         ...r.productSupplier,
         supplier: r.supplier,
     }));
@@ -146,7 +146,7 @@ export async function getPurchaseOrders(status?: string): Promise<(PurchaseOrder
         results = await baseQuery.orderBy(desc(purchaseOrders.createdAt));
     }
 
-    return results.map((r) => ({
+    return results.map((r: any) => ({
         ...r.purchaseOrder,
         supplier: r.supplier,
     }));
@@ -176,7 +176,7 @@ export async function getPurchaseOrder(id: string): Promise<(PurchaseOrder & { s
     return {
         ...result.purchaseOrder,
         supplier: result.supplier,
-        items: items.map((i) => ({
+        items: items.map((i: any) => ({
             ...i.item,
             product: i.product,
         })),
@@ -195,7 +195,7 @@ export async function createPurchaseOrder(
     data: InsertPurchaseOrder,
     items: { productId: string; quantity: number; unitCost: string }[]
 ): Promise<PurchaseOrder> {
-    return await db.transaction(async (tx) => {
+    return await db.transaction(async (tx: any) => {
         // Calculate totals
         let subtotal = 0;
         for (const item of items) {
@@ -240,7 +240,7 @@ export async function receivePurchaseOrderItems(
     receiveItems: { itemId: string; receivedQuantity: number; serialNumbers?: string[] }[],
     userId: string
 ): Promise<void> {
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: any) => {
         for (const item of receiveItems) {
             const [poItem] = await tx.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.id, item.itemId));
             if (!poItem) continue;
@@ -280,8 +280,8 @@ export async function receivePurchaseOrderItems(
 
         // Check if all items are fully received
         const allItems = await tx.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, purchaseOrderId));
-        const allReceived = allItems.every(item => (item.receivedQuantity || 0) >= item.quantity);
-        const someReceived = allItems.some(item => (item.receivedQuantity || 0) > 0);
+        const allReceived = allItems.every((item: any) => (item.receivedQuantity || 0) >= item.quantity);
+        const someReceived = allItems.some((item: any) => (item.receivedQuantity || 0) > 0);
 
         // Update PO status
         const newStatus = allReceived ? 'received' : (someReceived ? 'partial' : undefined);
@@ -323,7 +323,7 @@ export async function getSerialNumbers(productId?: string, status?: string): Pro
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(serialNumbers.createdAt));
 
-    return results.map((r) => ({
+    return results.map((r: any) => ({
         ...r.serialNumber,
         product: r.product,
     }));

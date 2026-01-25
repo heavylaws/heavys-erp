@@ -44,7 +44,7 @@ router.post('/', isAuthenticated, checkPermission('user:create'), async (req: an
         const newUser = await userService.createUser({
             ...userData,
             password: hashedPassword,
-            role: userData.role as "admin" | "manager" | "cashier" | "barista" | "courier"
+            role: userData.role as "admin" | "manager" | "cashier" | "technician" | "courier"
         });
 
         // Don't return password hash in response

@@ -11,6 +11,7 @@ interface BarcodeInputProps {
   placeholder?: string;
   className?: string;
   inactivityTimeout?: number; // milliseconds before refocusing
+  disabled?: boolean;
 }
 
 export function BarcodeInput({
@@ -19,7 +20,8 @@ export function BarcodeInput({
   autoFocus = false,
   placeholder = "Scan barcode...",
   className = "",
-  inactivityTimeout = 3000 // default 3 seconds
+  inactivityTimeout = 3000, // default 3 seconds
+  disabled = false
 }: BarcodeInputProps) {
   const [barcode, setBarcode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,10 +77,10 @@ export function BarcodeInput({
     const trimmedBarcode = barcode.trim();
     if (!trimmedBarcode) return;
 
-    // Find product by barcode
+    // Find product by barcode (case insensitive)
     const product = products.find(p =>
-      p.barcode === trimmedBarcode ||
-      p.barcodes?.includes(trimmedBarcode)
+      p.barcode?.toLowerCase() === trimmedBarcode.toLowerCase() ||
+      p.barcodes?.some(b => b.toLowerCase() === trimmedBarcode.toLowerCase())
     );
 
     if (product) {
@@ -90,7 +92,7 @@ export function BarcodeInput({
     } else {
       toast({
         title: "Product Not Found",
-        description: `No product found for the scanned code`,
+        description: `No product found for code: "${trimmedBarcode}"`,
         variant: "destructive",
       });
     }
@@ -128,6 +130,7 @@ export function BarcodeInput({
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck="false"
+        disabled={disabled}
       />
     </div>
   );

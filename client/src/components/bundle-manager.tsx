@@ -12,88 +12,88 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, ChefHat, Package } from "lucide-react";
+import { Plus, Trash2, Box, Package } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Ingredient, RecipeIngredient } from "@shared/schema";
+import type { Component, ProductComponent } from "@shared/schema";
 
-const addRecipeIngredientSchema = z.object({
-  ingredientId: z.string().min(1, "Please select an ingredient"),
+const addProductComponentSchema = z.object({
+  componentId: z.string().min(1, "Please select a component"),
   quantity: z.string().min(1, "Quantity is required"),
   isOptional: z.boolean().optional().default(false),
 });
 
-type AddRecipeIngredient = z.infer<typeof addRecipeIngredientSchema>;
+type AddProductComponent = z.infer<typeof addProductComponentSchema>;
 
-interface RecipeManagerProps {
+interface BundleManagerProps {
   productId: string;
   productName: string;
   trigger?: React.ReactNode;
 }
 
-export function RecipeManager({ productId, productName, trigger }: RecipeManagerProps) {
+export function BundleManager({ productId, productName, trigger }: BundleManagerProps) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
 
-  const form = useForm<AddRecipeIngredient>({
-    resolver: zodResolver(addRecipeIngredientSchema),
+  const form = useForm<AddProductComponent>({
+    resolver: zodResolver(addProductComponentSchema),
     defaultValues: {
-      ingredientId: "",
+      componentId: "",
       quantity: "",
       isOptional: false,
     },
   });
 
-  // Fetch ingredients
-  const { data: ingredients = [] } = useQuery<Ingredient[]>({
-    queryKey: ["/api/ingredients"],
+  // Fetch components
+  const { data: components = [] } = useQuery<Component[]>({
+    queryKey: ["/api/components"],
   });
 
-  // Fetch recipe ingredients
-  const { data: recipeIngredients = [], isLoading } = useQuery<RecipeIngredient[]>({
-    queryKey: ["/api/products", productId, "recipe"],
+  // Fetch product components
+  const { data: productComponents = [], isLoading } = useQuery<ProductComponent[]>({
+    queryKey: ["/api/products", productId, "components"],
     enabled: open,
   });
 
-  // Add recipe ingredient mutation
-  const addIngredientMutation = useMutation({
-    mutationFn: async (data: AddRecipeIngredient) => {
-      const response = await apiRequest("POST", `/api/products/${productId}/recipe`, data);
+  // Add product component mutation
+  const addComponentMutation = useMutation({
+    mutationFn: async (data: AddProductComponent) => {
+      const response = await apiRequest("POST", `/api/products/${productId}/components`, data);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "recipe"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "components"] });
       toast({
         title: "Success",
-        description: "Ingredient added to recipe",
+        description: "Component added to bundle",
       });
       form.reset();
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add ingredient to recipe",
+        description: error.message || "Failed to add component to bundle",
         variant: "destructive",
       });
     },
   });
 
-  // Remove recipe ingredient mutation
-  const removeIngredientMutation = useMutation({
-    mutationFn: async (recipeIngredientId: string) => {
-      const response = await apiRequest("DELETE", `/api/recipe-ingredients/${recipeIngredientId}`);
+  // Remove product component mutation
+  const removeComponentMutation = useMutation({
+    mutationFn: async (productComponentId: string) => {
+      const response = await apiRequest("DELETE", `/api/product-components/${productComponentId}`);
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "recipe"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "components"] });
       toast({
         title: "Success",
-        description: "Ingredient removed from recipe",
+        description: "Component removed from bundle",
       });
     },
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to remove ingredient from recipe",
+        description: error.message || "Failed to remove component from bundle",
         variant: "destructive",
       });
     },
@@ -101,22 +101,22 @@ export function RecipeManager({ productId, productName, trigger }: RecipeManager
 
   // Toggle optional mutation
   const toggleOptionalMutation = useMutation({
-    mutationFn: async (item: RecipeIngredient) => {
-      const response = await apiRequest("PATCH", `/api/recipe-ingredients/${item.id}`, { isOptional: !item.isOptional });
+    mutationFn: async (item: ProductComponent) => {
+      const response = await apiRequest("PATCH", `/api/product-components/${item.id}`, { isOptional: !item.isOptional });
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "recipe"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products", productId, "components"] });
     },
   });
 
-  const onSubmit = (data: AddRecipeIngredient) => {
-    addIngredientMutation.mutate(data);
+  const onSubmit = (data: AddProductComponent) => {
+    addComponentMutation.mutate(data);
   };
 
-  const getIngredientName = (ingredientId: string) => {
-    const ingredient = ingredients.find(i => i.id === ingredientId);
-    return ingredient ? `${ingredient.name} (${ingredient.unit})` : "Unknown";
+  const getComponentName = (componentId: string) => {
+    const component = components.find(i => i.id === componentId);
+    return component ? `${component.name} (${component.unit})` : "Unknown";
   };
 
   return (
@@ -124,45 +124,45 @@ export function RecipeManager({ productId, productName, trigger }: RecipeManager
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm" className="flex items-center space-x-1">
-            <ChefHat className="h-4 w-4" />
-            <span>Manage Recipe</span>
+            <Box className="h-4 w-4" />
+            <span>Manage Bundle</span>
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
-            <ChefHat className="h-5 w-5" />
-            <span>Recipe for {productName}</span>
+            <Box className="h-5 w-5" />
+            <span>Bundle for {productName}</span>
           </DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-6">
-          {/* Add Ingredient Form */}
+          {/* Add Component Form */}
           <div className="border rounded-lg p-4">
             <h3 className="font-medium mb-3 flex items-center space-x-2">
               <Plus className="h-4 w-4" />
-              <span>Add Ingredient</span>
+              <span>Add Component</span>
             </h3>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="ingredientId"
+                    name="componentId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Ingredient</FormLabel>
+                        <FormLabel>Component</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select ingredient" />
+                              <SelectValue placeholder="Select component" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {ingredients.map((ingredient) => (
-                              <SelectItem key={ingredient.id} value={ingredient.id}>
-                                {ingredient.name} ({ingredient.unit})
+                            {components.map((component) => (
+                              <SelectItem key={component.id} value={component.id}>
+                                {component.name} ({component.unit})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -195,42 +195,42 @@ export function RecipeManager({ productId, productName, trigger }: RecipeManager
                         <Checkbox checked={field.value} onCheckedChange={(val) => field.onChange(Boolean(val))} />
                       </FormControl>
                       <div className="space-y-0.5">
-                        <FormLabel className="text-sm">Optional Ingredient</FormLabel>
+                        <FormLabel className="text-sm">Optional Component</FormLabel>
                         <p className="text-xs text-muted-foreground">If checked, stock deduction occurs only when selected manually later.</p>
                       </div>
                     </FormItem>
                   )}
                 />
 
-                <Button 
-                  type="submit" 
-                  disabled={addIngredientMutation.isPending}
+                <Button
+                  type="submit"
+                  disabled={addComponentMutation.isPending}
                   className="w-full"
                 >
-                  {addIngredientMutation.isPending ? "Adding..." : "Add to Recipe"}
+                  {addComponentMutation.isPending ? "Adding..." : "Add to Bundle"}
                 </Button>
               </form>
             </Form>
           </div>
 
-          {/* Current Recipe */}
+          {/* Current Bundle */}
           <div className="border rounded-lg p-4">
             <h3 className="font-medium mb-3 flex items-center space-x-2">
               <Package className="h-4 w-4" />
-              <span>Current Recipe</span>
+              <span>Current Bundle</span>
             </h3>
-            
+
             {isLoading ? (
-              <div className="text-center py-4">Loading recipe...</div>
-            ) : recipeIngredients.length === 0 ? (
+              <div className="text-center py-4">Loading bundle...</div>
+            ) : productComponents.length === 0 ? (
               <div className="text-center py-4 text-muted-foreground">
-                No ingredients added yet. Add ingredients above to create the recipe.
+                No components added yet. Add components above to create the bundle.
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Ingredient</TableHead>
+                    <TableHead>Component</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Stock</TableHead>
                     <TableHead>Optional</TableHead>
@@ -238,18 +238,18 @@ export function RecipeManager({ productId, productName, trigger }: RecipeManager
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recipeIngredients.map((item) => {
-                    const ingredient = ingredients.find(i => i.id === item.ingredientId);
+                  {productComponents.map((item) => {
+                    const component = components.find(i => i.id === item.componentId); // Standardized to componentId
                     return (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">
-                          {getIngredientName(item.ingredientId)}
+                          {getComponentName(item.componentId)}
                         </TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          {ingredient && (
-                            <Badge variant={Number(ingredient.stockQuantity) > Number(ingredient.minThreshold) ? "default" : "destructive"}>
-                              {ingredient.stockQuantity} {ingredient.unit}
+                          {component && (
+                            <Badge variant={Number(component.stockQuantity) > Number(component.minThreshold) ? "default" : "destructive"}>
+                              {component.stockQuantity} {component.unit}
                             </Badge>
                           )}
                         </TableCell>
@@ -268,8 +268,8 @@ export function RecipeManager({ productId, productName, trigger }: RecipeManager
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => removeIngredientMutation.mutate(item.id)}
-                            disabled={removeIngredientMutation.isPending}
+                            onClick={() => removeComponentMutation.mutate(item.id)}
+                            disabled={removeComponentMutation.isPending}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

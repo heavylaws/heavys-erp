@@ -13,10 +13,10 @@ const Login = React.lazy(() => import("@/pages/login"));
 const CashierPOS = React.lazy(() => import("@/pages/cashier"));
 const ManagerDashboard = React.lazy(() => import("@/pages/manager"));
 const AdminDashboard = React.lazy(() => import("@/pages/admin"));
-const BaristaScreen = React.lazy(() => import("@/pages/barista"));
+const TechnicianScreen = React.lazy(() => import("@/pages/technician"));
 const CourierScreen = React.lazy(() => import("@/pages/courier"));
 const KioskPage = React.lazy(() => import("@/pages/kiosk"));
-const KitchenDisplay = React.lazy(() => import("@/pages/kitchen-display"));
+const AssemblyDisplay = React.lazy(() => import("@/pages/assembly-display"));
 const LeaderboardPage = React.lazy(() => import("@/pages/leaderboard"));
 const StrategicReports = React.lazy(() => import("@/pages/strategic-reports"));
 const AdminBackupPage = React.lazy(() => import("@/pages/admin-backup").then(module => ({ default: module.AdminBackupPage })));
@@ -57,7 +57,7 @@ function Router() {
                   admin: AdminDashboard,
                   manager: ManagerDashboard,
                   cashier: CashierPOS,
-                  barista: BaristaScreen,
+                  technician: TechnicianScreen,
                   courier: CourierScreen,
                 } as const;
                 const Component =
@@ -70,10 +70,11 @@ function Router() {
             <Route path="/admin" component={AdminDashboard} />
             <Route path="/cashier" component={CashierPOS} />
             <Route path="/manager" component={ManagerDashboard} />
-            <Route path="/barista" component={BaristaScreen} />
+            <Route path="/manager" component={ManagerDashboard} />
+            <Route path="/technician" component={TechnicianScreen} />
             <Route path="/courier" component={CourierScreen} />
             <Route path="/kiosk" component={KioskPage} />
-            <Route path="/kitchen" component={KitchenDisplay} />
+            <Route path="/assembly" component={AssemblyDisplay} />
             <Route path="/leaderboard" component={LeaderboardPage} />
             <Route path="/reports/strategic" component={StrategicReports} />
           </>

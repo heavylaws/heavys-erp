@@ -40,8 +40,8 @@ async function updateRate(input: UpdateRateInput): Promise<CurrencyRate> {
 
 export function useExchangeRate() {
   const qc = useQueryClient();
-  const currentQuery = useQuery({ queryKey: ['currency','current'], queryFn: fetchCurrentRate, staleTime: 60_000 });
-  const historyQuery = useQuery({ queryKey: ['currency','history',5], queryFn: () => fetchHistory(5), staleTime: 60_000 });
+  const currentQuery = useQuery({ queryKey: ['currency', 'current'], queryFn: fetchCurrentRate, staleTime: 60_000 });
+  const historyQuery = useQuery({ queryKey: ['currency', 'history', 5], queryFn: () => fetchHistory(5), staleTime: 60_000 });
 
   const mutation = useMutation({
     mutationFn: updateRate,
@@ -50,5 +50,18 @@ export function useExchangeRate() {
     }
   });
 
-  return { ...currentQuery, history: historyQuery.data || [], updateRate: mutation.mutateAsync, updating: mutation.isPending, updateError: mutation.error };
+  const rate = currentQuery.data?.rate ? Number(currentQuery.data.rate) : 1;
+  const primaryCurrency = currentQuery.data?.fromCurrency || 'USD';
+  const secondaryCurrency = currentQuery.data?.toCurrency || 'LBP';
+
+  return {
+    ...currentQuery,
+    rate,
+    primaryCurrency,
+    secondaryCurrency,
+    history: historyQuery.data || [],
+    updateRate: mutation.mutateAsync,
+    updating: mutation.isPending,
+    updateError: mutation.error
+  };
 }

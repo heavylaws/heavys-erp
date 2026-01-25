@@ -466,9 +466,9 @@ export function CustomerManagement() {
                                         {customer.creditLimit ? (
                                             <div>
                                                 <div className="font-medium">${parseFloat(customer.creditLimit).toFixed(2)}</div>
-                                                {customer.balance && parseFloat(customer.balance) > 0 && (
+                                                {customer.currentBalance && parseFloat(customer.currentBalance) > 0 && (
                                                     <div className="text-xs text-orange-600">
-                                                        Balance: ${parseFloat(customer.balance).toFixed(2)}
+                                                        Balance: ${parseFloat(customer.currentBalance).toFixed(2)}
                                                     </div>
                                                 )}
                                             </div>

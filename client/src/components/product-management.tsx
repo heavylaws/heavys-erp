@@ -8,10 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Edit, Trash2, Package, Plus, ChefHat, Settings, Search, X } from "lucide-react";
+import { Edit, Trash2, Package, Plus, Box, Settings, Search, X } from "lucide-react";
 import { EditProductDialog } from "@/components/edit-product-dialog";
 import { AddProductDialog } from "@/components/add-product-dialog";
-import { RecipeManager } from "@/components/recipe-manager";
+import { BundleManager } from "@/components/bundle-manager";
 import { RestockDialog } from "@/components/restock-dialog";
 import { StockAdjustmentDialog } from "@/components/stock-adjustment-dialog";
 import {
@@ -274,7 +274,7 @@ export function ProductManagement() {
                           <div className="h-2 w-2 rounded-full bg-amber-400"></div>
                         )}
                         <span className="text-sm font-medium text-gray-600">
-                          {product.type === 'finished_good' ? 'Finished' : 'Recipe'}
+                          {product.type === 'finished_good' ? 'Finished' : 'Bundle'}
                         </span>
                       </div>
                     </TableCell>
@@ -311,10 +311,10 @@ export function ProductManagement() {
                           </Button>
                         </StockAdjustmentDialog>
 
-                        {product.type === 'ingredient_based' && (
-                          <RecipeManager productId={product.id} productName={product.name} trigger={
-                            <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 rounded-full" title="Manage Recipe">
-                              <ChefHat className="h-4 w-4" />
+                        {product.type === 'component_based' && (
+                          <BundleManager productId={product.id} productName={product.name} trigger={
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 rounded-full" title="Manage Bundle">
+                              <Box className="h-4 w-4" />
                             </Button>
                           } />
                         )}

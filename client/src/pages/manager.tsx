@@ -16,8 +16,9 @@ import { ProductManagement } from "@/components/product-management";
 import { CategoryManagement } from "@/components/category-management";
 import { OrderManagement } from "@/components/order-management";
 import { AddProductDialog } from "@/components/add-product-dialog";
-import { AddIngredientDialog } from "@/components/add-ingredient-dialog";
-import { RecipeManager } from "@/components/recipe-manager";
+
+import { AddComponentDialog } from "@/components/add-component-dialog";
+import { BundleManager } from "@/components/bundle-manager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CurrencyRateManager } from "@/components/currency-rate-manager";
 import { InventoryNotifications } from "@/components/inventory-notifications";
@@ -59,7 +60,7 @@ export default function ManagerDashboard() {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/low-stock'] });
       queryClient.invalidateQueries({ queryKey: ['/api/products'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/components'] });
       toast({
         title: "Dashboard Updated",
         description: "New data received.",
@@ -110,7 +111,7 @@ export default function ManagerDashboard() {
   });
 
   // Fetch low stock items
-  const { data: lowStockData } = useQuery<{ products: any[]; ingredients: any[]; }>({
+  const { data: lowStockData } = useQuery<{ products: any[]; components: any[]; }>({
     queryKey: ['/api/inventory/low-stock']
   });
 
@@ -252,7 +253,7 @@ export default function ManagerDashboard() {
     );
   }
 
-  const totalLowStockItems = (lowStockData?.products?.length || 0) + (lowStockData?.ingredients?.length || 0);
+  const totalLowStockItems = (lowStockData?.products?.length || 0) + (lowStockData?.components?.length || 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -408,7 +409,7 @@ export default function ManagerDashboard() {
             <TabsTrigger value="categories" className="flex-shrink-0">Categories</TabsTrigger>
             <TabsTrigger value="suppliers" className="flex-shrink-0">Suppliers</TabsTrigger>
             <TabsTrigger value="customers" className="flex-shrink-0">Customers</TabsTrigger>
-            <TabsTrigger value="ingredients" className="flex-shrink-0">Ingredients</TabsTrigger>
+            <TabsTrigger value="components" className="flex-shrink-0">Components</TabsTrigger>
             <TabsTrigger value="purchase-orders" className="flex-shrink-0">PO</TabsTrigger>
             <TabsTrigger value="orders" className="flex-shrink-0">Orders</TabsTrigger>
             <TabsTrigger value="users" className="flex-shrink-0">Users</TabsTrigger>
@@ -671,13 +672,13 @@ export default function ManagerDashboard() {
             <CustomerManagement />
           </TabsContent>
 
-          <TabsContent value="ingredients" className="space-y-6">
+          <TabsContent value="components" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  Ingredient Management
+                  Component Management
                   <div className="flex space-x-2">
-                    <AddIngredientDialog />
+                    <AddComponentDialog />
                     <Button variant="outline" size="sm">
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Update Stock
@@ -688,10 +689,10 @@ export default function ManagerDashboard() {
               <CardContent>
                 <div className="space-y-4">
                   <p className="text-gray-600">
-                    Manage ingredients for recipe-based products. When you create recipe-based products,
-                    the system will automatically deduct these ingredients from stock when orders are processed.
+                    Manage components for bundle-based products. When you create bundle-based products,
+                    the system will automatically deduct these components from stock when orders are processed.
                   </p>
-                  <InventoryTable showIngredientsOnly={true} />
+                  <InventoryTable showComponentsOnly={true} />
                 </div>
               </CardContent>
             </Card>

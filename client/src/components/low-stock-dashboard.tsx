@@ -15,17 +15,17 @@ interface LowStockItem {
   stockQuantity: number | string;
   minThreshold: number | string;
   unit?: string;
-  type: 'product' | 'ingredient';
+  type: 'product' | 'component';
   costPerUnit?: string;
 }
 
 interface LowStockData {
   products: LowStockItem[];
-  ingredients: LowStockItem[];
+  components: LowStockItem[];
 }
 
 export function LowStockDashboard() {
-  const [activeTab, setActiveTab] = useState<'all' | 'products' | 'ingredients'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'products' | 'components'>('all');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -34,9 +34,9 @@ export function LowStockDashboard() {
   });
 
   const bulkRestockMutation = useMutation({
-    mutationFn: async (items: { id: string; type: 'product' | 'ingredient'; quantity: number }[]) => {
+    mutationFn: async (items: { id: string; type: 'product' | 'component'; quantity: number }[]) => {
       const promises = items.map(item =>
-        apiRequest("PATCH", `/api/${item.type === 'product' ? 'products' : 'ingredients'}/${item.id}/stock`, {
+        apiRequest("PATCH", `/api/${item.type === 'product' ? 'products' : 'components'}/${item.id}/stock`, {
           quantityChange: item.quantity,
           reason: "Bulk restock - Low stock alert"
         })
@@ -61,12 +61,12 @@ export function LowStockDashboard() {
 
   const allItems = [
     ...(lowStockData?.products.map(p => ({ ...p, type: 'product' as const })) || []),
-    ...(lowStockData?.ingredients.map(i => ({ ...i, type: 'ingredient' as const })) || [])
+    ...(lowStockData?.components.map(i => ({ ...i, type: 'component' as const })) || [])
   ];
 
   const filteredItems = activeTab === 'all' ? allItems :
     activeTab === 'products' ? (lowStockData?.products.map(p => ({ ...p, type: 'product' as const })) || []) :
-      (lowStockData?.ingredients.map(i => ({ ...i, type: 'ingredient' as const })) || []);
+      (lowStockData?.components.map(i => ({ ...i, type: 'component' as const })) || []);
 
   const getSeverityLevel = (stock: number, threshold: number) => {
     if (stock <= 0) return { level: 'critical', color: 'bg-red-500', text: 'Out of Stock' };
@@ -122,12 +122,12 @@ export function LowStockDashboard() {
                 Products ({lowStockData?.products.length || 0})
               </Button>
               <Button
-                variant={activeTab === 'ingredients' ? 'default' : 'outline'}
+                variant={activeTab === 'components' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setActiveTab('ingredients')}
-                data-testid="tab-ingredients"
+                onClick={() => setActiveTab('components')}
+                data-testid="tab-components"
               >
-                Ingredients ({lowStockData?.ingredients.length || 0})
+                Components ({lowStockData?.components.length || 0})
               </Button>
             </div>
 
