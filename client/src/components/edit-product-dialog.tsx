@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 
 import { Edit, Package, X } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { insertProductSchema, type InsertProduct, type Product, type Category } from "@shared/schema";
 
 const formSchema = insertProductSchema.extend({
@@ -132,14 +132,14 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
       <DialogTrigger asChild>
         {children || defaultTrigger}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Package className="h-5 w-5" />
             <span>Edit Product</span>
           </DialogTitle>
         </DialogHeader>
-        <ScrollArea className="flex-1 pr-4 -mr-4">
+        <div className="flex-1 pr-4 -mr-4 min-h-0 overflow-y-auto">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -463,7 +463,7 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
               </div>
             </form>
           </Form>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog >
   );

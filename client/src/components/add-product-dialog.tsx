@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -192,7 +193,7 @@ export function AddProductDialog({
         {children || defaultTrigger}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
         <div className="p-6 pb-2">
           <DialogHeader>
             <DialogTitle>Add New Product</DialogTitle>
@@ -202,7 +203,7 @@ export function AddProductDialog({
           </DialogHeader>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6">
+        <div className="flex-1 overflow-y-auto px-6 min-h-0">
           <Form {...form}>
             <form id="add-product-form" onSubmit={form.handleSubmit(onSubmit)} onKeyDown={handleKeyDown} className="space-y-4 py-4">
               <FormField
