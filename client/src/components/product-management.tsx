@@ -14,6 +14,7 @@ import { AddProductDialog } from "@/components/add-product-dialog";
 import { BundleManager } from "@/components/bundle-manager";
 import { RestockDialog } from "@/components/restock-dialog";
 import { StockAdjustmentDialog } from "@/components/stock-adjustment-dialog";
+import { BarcodePrintDialog } from "@/components/barcode-print-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -335,6 +336,8 @@ export function ProductManagement() {
                             </Button>
                           } />
                         )}
+
+                        <BarcodePrintDialog product={product} />
 
                         <EditProductDialog product={product}>
                           <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 rounded-full" title="Edit">
