@@ -67,16 +67,16 @@ import("./App")
   });
 
 // PWA Service Worker Registration
-import { registerSW } from 'virtual:pwa-register';
+// import { registerSW } from 'virtual:pwa-register';
 
-if (import.meta.env.PROD) {
-  registerSW({
-    onNeedRefresh() {
-      console.log('New content available, please refresh.');
-    },
-    onOfflineReady() {
-      console.log('App is ready to work offline.');
-      // Optional: Display a toast here "Ready for offline use"
-    },
-  });
-}
+// if (import.meta.env.PROD) {
+//   registerSW({
+//     onNeedRefresh() {
+//       console.log('New content available, please refresh.');
+//     },
+//     onOfflineReady() {
+//       console.log('App is ready to work offline.');
+//       // Optional: Display a toast here "Ready for offline use"
+//     },
+//   });
+// }

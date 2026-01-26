@@ -11,6 +11,19 @@
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <!-- Replit banner removed for local network access -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        for (let registration of registrations) {
+          console.log('Unregistering SW:', registration);
+          registration.unregister();
+        }
+      });
+      caches.keys().then(function(names) {
+        for (let name of names) caches.delete(name);
+      });
+    }
+  </script>
 </body>
 
 </html>
