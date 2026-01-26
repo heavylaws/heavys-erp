@@ -210,8 +210,25 @@ export function ProductManagement() {
                 products.map((product) => (
                   <TableRow key={product.id} className="hover:bg-slate-50/80 transition-colors border-gray-100 group">
                     <TableCell className="pl-6">
-                      <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-gray-200 shadow-sm">
-                        <Package className="h-6 w-6" />
+                      <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-gray-200 shadow-sm overflow-hidden">
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            onError={(e) => {
+                              // If image fails, revert to placeholder
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.parentElement?.classList.add('flex', 'items-center', 'justify-center');
+                              const placeholderIcon = document.createElement('div');
+                              placeholderIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-package h-6 w-6"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.29 7 9.71 5.29 9.71-5.29"/><path d="M8 5.48v5.48L12 12"/></svg>`;
+                              e.currentTarget.parentElement?.appendChild(placeholderIcon.firstChild!);
+                            }}
+                          />
+                        ) : (
+                          <Package className="h-6 w-6" />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>

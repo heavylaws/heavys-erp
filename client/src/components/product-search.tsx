@@ -88,7 +88,25 @@ export function ProductSearch({ products, onProductSelect, currentRate }: Produc
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
-                          <Coffee className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                          <div className="h-8 w-8 rounded bg-gray-100 flex items-center justify-center text-gray-400 border border-gray-200 overflow-hidden flex-shrink-0">
+                            {product.imageUrl ? (
+                              <img
+                                src={product.imageUrl}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  e.currentTarget.parentElement?.classList.add('flex', 'items-center', 'justify-center');
+                                  const placeholderIcon = document.createElement('div');
+                                  placeholderIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-package h-4 w-4"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.29 7 9.71 5.29 9.71-5.29"/><path d="M8 5.48v5.48L12 12"/></svg>`;
+                                  e.currentTarget.parentElement?.appendChild(placeholderIcon.firstChild!);
+                                }}
+                              />
+                            ) : (
+                              <Coffee className="h-4 w-4 text-gray-400" />
+                            )}
+                          </div>
                           <h4 className="font-medium text-gray-900 truncate">{product.name}</h4>
                         </div>
                         {product.description && (

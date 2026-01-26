@@ -1,12 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig(async () => {
   const devPlugins: any[] = [];
   if (process.env.NODE_ENV !== "production") {
+    const runtimeErrorOverlay = (await import("@replit/vite-plugin-runtime-error-modal")).default;
     devPlugins.push(runtimeErrorOverlay());
     if (process.env.REPL_ID !== undefined) {
       const { cartographer } = await import("@replit/vite-plugin-cartographer");
