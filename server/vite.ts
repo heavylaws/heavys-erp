@@ -13,11 +13,14 @@ export async function setupVite(app: Express, server: Server) {
 
   const serverOptions = {
     middlewareMode: true,
+    hmr: false, // Disabled to fix persistent reload loop
+    /*
     hmr: {
       server,
       // Use the same port as the Express server
       clientPort: port,
     },
+    */
     allowedHosts: true as const,
   };
 
