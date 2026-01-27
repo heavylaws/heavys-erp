@@ -87,16 +87,28 @@ export default function Login() {
   }
 
   if (!user) {
+    const logoUrl = (settings as any)?.logoUrl;
+    const loginSubtitle = (settings as any)?.loginSubtitle || "Please log in to continue";
+    const showDemoCredentials = (settings as any)?.showDemoCredentials !== false;
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
         <Card className="w-full max-w-md mx-4">
           <CardContent className="pt-6">
             <div className="text-center mb-8">
-              <div className="bg-primary p-4 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-                <Coffee className="text-white text-2xl h-8 w-8" />
-              </div>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={companyName}
+                  className="w-20 h-20 mx-auto mb-4 rounded-full object-cover"
+                />
+              ) : (
+                <div className="bg-primary p-4 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+                  <Coffee className="text-white text-2xl h-8 w-8" />
+                </div>
+              )}
               <h1 className="text-2xl font-bold text-neutral mb-2">{companyName}</h1>
-              <p className="text-gray-600">Please log in to continue</p>
+              <p className="text-gray-600">{loginSubtitle}</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -133,16 +145,17 @@ export default function Login() {
               </Button>
             </form>
 
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h3>
-              <div className="text-xs text-gray-600 space-y-1">
-                <div><strong>Admin:</strong> admin / admin123</div>
-                <div><strong>Manager:</strong> manager / manager123</div>
-                <div><strong>Cashier:</strong> cashier / cashier123</div>
-                <div><strong>Barista:</strong> barista / barista123</div>
-                <div><strong>Courier:</strong> courier / courier123</div>
+            {showDemoCredentials && (
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h3>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <div><strong>Admin:</strong> admin / admin123</div>
+                  <div><strong>Manager:</strong> manager / manager123</div>
+                  <div><strong>Cashier:</strong> cashier / cashier123</div>
+                  <div><strong>Technician:</strong> technician / tech123</div>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

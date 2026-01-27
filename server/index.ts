@@ -58,7 +58,6 @@ import { serveStatic } from "./static-server";
   server.listen({
     port,
     host: "0.0.0.0",
-    reusePort: true,
   }, () => {
     log(`🏪 Highway Cafe POS Server running on port ${port}`);
     log(`📱 Local Network Access: Connect devices to http://[YOUR-LOCAL-IP]:${port}`);

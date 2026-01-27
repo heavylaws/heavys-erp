@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Building2, Save, Loader2 } from "lucide-react";
+import { Building2, Save, Loader2, Image } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,6 +32,9 @@ export function OrganizationSettings() {
             email: "",
             website: "",
             taxId: "",
+            logoUrl: "",
+            loginSubtitle: "Please log in to continue",
+            showDemoCredentials: true,
             receiptHeader: "Welcome!",
             receiptFooter: "Thank you for your visit!",
         },
@@ -46,6 +49,9 @@ export function OrganizationSettings() {
                 email: settings.email || "",
                 website: settings.website || "",
                 taxId: settings.taxId || "",
+                logoUrl: settings.logoUrl || "",
+                loginSubtitle: (settings as any).loginSubtitle || "Please log in to continue",
+                showDemoCredentials: (settings as any).showDemoCredentials !== false,
                 receiptHeader: settings.receiptHeader || "Welcome!",
                 receiptFooter: settings.receiptFooter || "Thank you for your visit!",
             });
@@ -201,6 +207,120 @@ export function OrganizationSettings() {
                                 </FormItem>
                             )}
                         />
+
+                        {/* Branding Section */}
+                        <div className="pt-4 border-t">
+                            <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                                <Image className="h-5 w-5" />
+                                Login Page Branding
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <FormField
+                                    control={form.control}
+                                    name="logoUrl"
+                                    render={({ field }) => (
+                                        <FormItem className="col-span-2">
+                                            <FormLabel>Company Logo</FormLabel>
+                                            <div className="flex items-start gap-4">
+                                                {/* Logo Preview */}
+                                                <div className="flex-shrink-0">
+                                                    {field.value ? (
+                                                        <img
+                                                            src={field.value}
+                                                            alt="Logo preview"
+                                                            className="w-20 h-20 rounded-lg object-cover border"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-20 h-20 rounded-lg bg-gray-100 border flex items-center justify-center">
+                                                            <Image className="h-8 w-8 text-gray-400" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 space-y-2">
+                                                    <FormControl>
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={(e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (file) {
+                                                                        if (file.size > 500 * 1024) {
+                                                                            toast({
+                                                                                title: "File too large",
+                                                                                description: "Please select an image smaller than 500KB",
+                                                                                variant: "destructive"
+                                                                            });
+                                                                            return;
+                                                                        }
+                                                                        const reader = new FileReader();
+                                                                        reader.onloadend = () => {
+                                                                            field.onChange(reader.result as string);
+                                                                        };
+                                                                        reader.readAsDataURL(file);
+                                                                    }
+                                                                }}
+                                                                className="cursor-pointer"
+                                                            />
+                                                            {field.value && (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() => field.onChange("")}
+                                                                >
+                                                                    Remove
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        Upload an image (max 500KB). Shown on login page.
+                                                    </FormDescription>
+                                                </div>
+                                            </div>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="loginSubtitle"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Login Page Subtitle</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="Please log in to continue" {...field} value={field.value || ''} />
+                                            </FormControl>
+                                            <FormDescription>Subtitle text shown below the company name</FormDescription>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="showDemoCredentials"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                                            <div className="space-y-0.5">
+                                                <FormLabel>Show Demo Credentials</FormLabel>
+                                                <FormDescription>Display demo login credentials on login page</FormDescription>
+                                            </div>
+                                            <FormControl>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={field.value === true}
+                                                    onChange={(e) => field.onChange(e.target.checked)}
+                                                    className="h-4 w-4 accent-primary"
+                                                />
+                                            </FormControl>
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
                             <FormField

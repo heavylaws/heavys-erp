@@ -62,10 +62,10 @@ export default function CourierScreen() {
       window.location.href = '/';
     }
   };
-  
+
   // Initialize mobile optimizations
   useMobileOptimizations();
-  
+
   // Order taking state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
@@ -87,20 +87,8 @@ export default function CourierScreen() {
     }
   });
 
-  // Redirect if not authenticated or not authorized
+  // Redirect if not authorized (Authentication is handled by App.tsx)
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
-      return;
-    }
-
     if (!isLoading && user && !['admin', 'courier'].includes((user as any).role)) {
       toast({
         title: "Access Denied",
@@ -112,7 +100,7 @@ export default function CourierScreen() {
       }, 1000);
       return;
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isLoading, user, toast]);
 
   // Fetch categories for filtering
   const { data: categories = [] } = useQuery<any[]>({
@@ -125,7 +113,7 @@ export default function CourierScreen() {
   });
 
   // Filter products by selected category
-  const products = selectedCategory 
+  const products = selectedCategory
     ? allProducts.filter(product => product.categoryId === selectedCategory)
     : allProducts;
 
@@ -150,7 +138,7 @@ export default function CourierScreen() {
   // Smart search filter for delivery orders
   const readyOrders = useMemo(() => {
     if (!allReadyOrders || !orderSearchTerm) return allReadyOrders;
-    
+
     const searchLower = orderSearchTerm.toLowerCase();
     return allReadyOrders.filter(order =>
       order.orderNumber?.toString().includes(searchLower) ||
@@ -171,10 +159,10 @@ export default function CourierScreen() {
   );
 
   const deliveredToday = allOrders.filter(
-    order => order.status === 'delivered' && 
-    order.courierId === (user as any)?.id &&
-    order.deliveredAt &&
-    new Date(order.deliveredAt).toDateString() === new Date().toDateString()
+    order => order.status === 'delivered' &&
+      order.courierId === (user as any)?.id &&
+      order.deliveredAt &&
+      new Date(order.deliveredAt).toDateString() === new Date().toDateString()
   ).length;
 
   // Create order mutation
@@ -188,11 +176,11 @@ export default function CourierScreen() {
         credentials: 'include',
         body: JSON.stringify(orderData)
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to create order');
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
@@ -220,11 +208,11 @@ export default function CourierScreen() {
         credentials: 'include',
         body: JSON.stringify({ status, courierId })
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to update order');
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
@@ -237,8 +225,8 @@ export default function CourierScreen() {
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.productId === product.id);
     if (existing) {
-      setCart(cart.map(item => 
-        item.productId === product.id 
+      setCart(cart.map(item =>
+        item.productId === product.id
           ? { ...item, quantity: item.quantity + 1 }
           : item
       ));
@@ -255,8 +243,8 @@ export default function CourierScreen() {
   const removeFromCart = (productId: string) => {
     const existing = cart.find(item => item.productId === productId);
     if (existing && existing.quantity > 1) {
-      setCart(cart.map(item => 
-        item.productId === productId 
+      setCart(cart.map(item =>
+        item.productId === productId
           ? { ...item, quantity: item.quantity - 1 }
           : item
       ));
@@ -309,10 +297,10 @@ export default function CourierScreen() {
 
   const pickupOrder = (orderId: string) => {
     const order = readyOrders.find(o => o.id === orderId);
-    updateOrderMutation.mutate({ 
-      orderId, 
+    updateOrderMutation.mutate({
+      orderId,
       status: order?.isDelivery ? 'delivering' : 'delivered',
-      courierId: (user as any)?.id 
+      courierId: (user as any)?.id
     });
     toast({
       title: "Order Picked Up",
@@ -329,9 +317,9 @@ export default function CourierScreen() {
   };
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(dateString).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -360,19 +348,19 @@ export default function CourierScreen() {
               <p className="text-sm text-gray-600">Order Taking & Delivery</p>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
               <Star className="h-4 w-4 mr-2 inline" />
               {deliveredToday} delivered today
             </div>
             {user ? (
-              <ShiftButton 
+              <ShiftButton
                 currentUser={user as any}
                 onLogout={handleLogout}
               />
             ) : null}
-            
+
             <Button
               onClick={handleLogout}
               variant="ghost"
@@ -390,22 +378,20 @@ export default function CourierScreen() {
         <div className="flex space-x-8 px-6">
           <button
             onClick={() => setActiveTab('orders')}
-            className={`py-4 px-2 border-b-2 font-medium text-sm ${
-              activeTab === 'orders'
+            className={`py-4 px-2 border-b-2 font-medium text-sm ${activeTab === 'orders'
                 ? 'border-purple-500 text-purple-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+              }`}
           >
             <ShoppingCart className="h-4 w-4 mr-2 inline" />
             Take Orders
           </button>
           <button
             onClick={() => setActiveTab('delivery')}
-            className={`py-4 px-2 border-b-2 font-medium text-sm ${
-              activeTab === 'delivery'
+            className={`py-4 px-2 border-b-2 font-medium text-sm ${activeTab === 'delivery'
                 ? 'border-purple-500 text-purple-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
+              }`}
           >
             <Truck className="h-4 w-4 mr-2 inline" />
             Delivery ({readyOrders.length})
@@ -440,7 +426,7 @@ export default function CourierScreen() {
                         inactivityTimeout={3000}
                       />
                     </div>
-                    <BarcodeScanner 
+                    <BarcodeScanner
                       onBarcodeScanned={(barcode) => {
                         const product = allProducts.find(p => p.barcode === barcode);
                         if (product) addToCart(product);
@@ -498,7 +484,7 @@ export default function CourierScreen() {
                     </div>
                   )}
                 </div>
-                
+
                 {/* Products Grid */}
                 <div className="max-h-80 overflow-y-auto">
                   {products.length === 0 ? (
@@ -585,10 +571,10 @@ export default function CourierScreen() {
                             </Button>
                             <span className="mx-2">{item.quantity}</span>
                             <Button
-                              onClick={() => addToCart({ 
-                                id: item.productId, 
-                                name: item.productName, 
-                                price: item.price.toString() 
+                              onClick={() => addToCart({
+                                id: item.productId,
+                                name: item.productName,
+                                price: item.price.toString()
                               } as Product)}
                               size="sm"
                               variant="outline"
@@ -598,7 +584,7 @@ export default function CourierScreen() {
                           </div>
                         </div>
                       ))}
-                      
+
                       <div className="border-t pt-4 space-y-2">
                         <div className="flex justify-between">
                           <span>Subtotal:</span>
@@ -716,7 +702,7 @@ export default function CourierScreen() {
                     {readyOrders.length} orders
                   </Badge>
                 </CardTitle>
-                
+
                 {/* Smart Search for Delivery Orders */}
                 <div className="mt-4">
                   <Label htmlFor="delivery-search">Search Orders</Label>
@@ -768,7 +754,7 @@ export default function CourierScreen() {
                         </div>
                         <Badge className="bg-green-100 text-green-800">Ready</Badge>
                       </div>
-                      
+
                       <div className="mb-4">
                         <div className="flex items-start space-x-3">
                           <User className="text-gray-400 mt-1 h-4 w-4" />
@@ -787,7 +773,7 @@ export default function CourierScreen() {
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-sm text-gray-600">
                           Total: <span className="font-bold text-neutral">${order.total}</span>
@@ -796,7 +782,7 @@ export default function CourierScreen() {
                           {order.isDelivery ? 'Delivery' : 'Pickup'}
                         </span>
                       </div>
-                      
+
                       <Button
                         onClick={() => pickupOrder(order.id)}
                         className="w-full bg-purple-600 text-white hover:bg-purple-700"

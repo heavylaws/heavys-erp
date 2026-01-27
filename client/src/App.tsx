@@ -1,4 +1,3 @@
-console.log('[DIAG] App.tsx loaded');
 
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
@@ -14,16 +13,28 @@ const CashierPOS = React.lazy(() => import("@/pages/cashier"));
 const ManagerDashboard = React.lazy(() => import("@/pages/manager"));
 const AdminDashboard = React.lazy(() => import("@/pages/admin"));
 const TechnicianScreen = React.lazy(() => import("@/pages/technician"));
-const CourierScreen = React.lazy(() => import("@/pages/courier"));
-const KioskPage = React.lazy(() => import("@/pages/kiosk"));
-const AssemblyDisplay = React.lazy(() => import("@/pages/assembly-display"));
-const LeaderboardPage = React.lazy(() => import("@/pages/leaderboard"));
 const StrategicReports = React.lazy(() => import("@/pages/strategic-reports"));
 const AdminBackupPage = React.lazy(() => import("@/pages/admin-backup").then(module => ({ default: module.AdminBackupPage })));
 const PriceCheck = React.lazy(() => import("@/pages/price-check"));
 
+const DashboardRouter = () => {
+  const { user } = useAuth();
+  const roleRoutes = {
+    admin: AdminDashboard,
+    manager: ManagerDashboard,
+    cashier: CashierPOS,
+    technician: TechnicianScreen,
+  } as const;
+
+  const Component =
+    roleRoutes[(user as any)?.role as keyof typeof roleRoutes] ||
+    ManagerDashboard;
+
+  return <Component />;
+};
+
 function Router() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -36,49 +47,28 @@ function Router() {
     );
   }
 
+  // Not authenticated - show login directly
+  if (!isAuthenticated) {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>}>
+        <Login />
+      </React.Suspense>
+    );
+  }
+
   return (
-    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading…</div>}>
+    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>}>
       <Switch>
         {/* Public route - Price Check Kiosk (no auth needed) */}
         <Route path="/price-check" component={PriceCheck} />
-
-        {!isAuthenticated ? (
-          <>
-            <Route path="/" component={Login} />
-            <Route path="/login" component={Login} />
-          </>
-        ) : (
-          <>
-            {/* Route authenticated users to their role-specific dashboard */}
-            <Route
-              path="/"
-              component={() => {
-                const roleRoutes = {
-                  admin: AdminDashboard,
-                  manager: ManagerDashboard,
-                  cashier: CashierPOS,
-                  technician: TechnicianScreen,
-                  courier: CourierScreen,
-                } as const;
-                const Component =
-                  roleRoutes[(user as any)?.role as keyof typeof roleRoutes] ||
-                  ManagerDashboard;
-                return <Component />;
-              }}
-            />
-            <Route path="/admin/backups" component={AdminBackupPage} />
-            <Route path="/admin" component={AdminDashboard} />
-            <Route path="/cashier" component={CashierPOS} />
-            <Route path="/manager" component={ManagerDashboard} />
-            <Route path="/manager" component={ManagerDashboard} />
-            <Route path="/technician" component={TechnicianScreen} />
-            <Route path="/courier" component={CourierScreen} />
-            <Route path="/kiosk" component={KioskPage} />
-            <Route path="/assembly" component={AssemblyDisplay} />
-            <Route path="/leaderboard" component={LeaderboardPage} />
-            <Route path="/reports/strategic" component={StrategicReports} />
-          </>
-        )}
+        {/* Route authenticated users to their role-specific dashboard */}
+        <Route path="/" component={DashboardRouter} />
+        <Route path="/admin/backups" component={AdminBackupPage} />
+        <Route path="/admin" component={AdminDashboard} />
+        <Route path="/cashier" component={CashierPOS} />
+        <Route path="/manager" component={ManagerDashboard} />
+        <Route path="/technician" component={TechnicianScreen} />
+        <Route path="/reports/strategic" component={StrategicReports} />
         <Route component={NotFound} />
       </Switch>
     </React.Suspense>

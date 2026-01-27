@@ -287,7 +287,7 @@ const createWindow = () => {
     });
 
     // POS URL - Default to Server
-    const POS_URL = process.env.POS_URL || 'http://192.168.1.104:5000';
+    const POS_URL = process.env.POS_URL || 'http://localhost:5003';
 
     console.log(`[Electron] Loading POS from: ${POS_URL}`);
     win.loadURL(POS_URL);

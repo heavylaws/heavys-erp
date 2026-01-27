@@ -19,6 +19,7 @@ export default defineConfig(async () => {
     plugins: [
       react(),
       VitePWA({
+        disable: process.env.NODE_ENV !== "production",
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
         manifest: {

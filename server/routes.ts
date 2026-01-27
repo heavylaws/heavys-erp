@@ -23,7 +23,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Rate limiter for authentication endpoints - prevent brute force attacks
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per IP per window
+  max: 5, // 5 attempts per IP per window (REVERTED)
   message: { message: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -172,30 +172,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     rolling: true,
   };
 
-  console.log('Initializing session middleware with config:', {
-    secret: sessionSecret ? 'present' : 'missing',
-    store: 'connect-pg-simple',
-    isDocker,
-    sessionName: sessionConfig.name,
-    cookieSecure: secureCookies,
-  });
 
   app.use(session(sessionConfig));
 
-  // Debug middleware to check session state
-  app.use((req: any, res, next) => {
-    if (req.path.startsWith('/api/')) {
-      console.log('Request debug:', {
-        path: req.path,
-        method: req.method,
-        sessionID: req.sessionID,
-        hasUser: !!req.session?.user,
-        userRole: req.session?.user?.role,
-        cookieHeader: req.headers.cookie
-      });
-    }
-    next();
-  });
 
   // Activity logging middleware (API only). Logs on response finish.
   app.use((req: any, res, next) => {
@@ -238,7 +217,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Add a simple test endpoint to verify middleware is working
   app.post('/api/test', (req: any, res) => {
-    console.log('Test endpoint reached');
     res.json({ message: 'Test successful', hasSession: !!req.session });
   });
 
@@ -317,15 +295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get current user endpoint (required by frontend)
   app.get('/api/auth/user', async (req: any, res) => {
-    console.log('GET /api/auth/user debug:', {
-      sessionExists: !!req.session,
-      sessionID: req.sessionID,
-      userExists: !!req.session?.user,
-      userId: req.session?.user?.id,
-      sessionUser: req.session?.user,
-      cookieHeader: req.headers.cookie,
-      userAgent: req.headers['user-agent']?.substring(0, 50) + '...'
-    });
+    // No debug log needed here anymore
 
     if (req.session?.user) {
       res.json(req.session.user);
@@ -2438,9 +2408,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
   // Initialize WebSocket Service (Shared)
-  // This replaces the local wssGlobal initialization to unify v1 and legacy
+  // Uses path /ws/app to avoid conflict with Vite's HMR WebSocket
   const { setupWebSocket } = await import('./services/websocket');
-  // Store globally for use in legacy routes (wssGlobal is let defined at top of file)
   wssGlobal = setupWebSocket(httpServer);
 
   return httpServer;

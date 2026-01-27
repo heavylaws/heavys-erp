@@ -17,10 +17,10 @@ export function useWebSocket(onMessage?: (message: WebSocketMessage) => void) {
       }
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      
+      const wsUrl = `${protocol}//${window.location.host}/ws/app`;
+
       ws.current = new WebSocket(wsUrl);
-      
+
       ws.current.onopen = () => {
         setIsConnected(true);
         console.log('WebSocket connected');
@@ -30,7 +30,7 @@ export function useWebSocket(onMessage?: (message: WebSocketMessage) => void) {
           reconnectTimeoutRef.current = null;
         }
       };
-      
+
       ws.current.onclose = () => {
         setIsConnected(false);
         console.log('WebSocket disconnected');
@@ -42,7 +42,7 @@ export function useWebSocket(onMessage?: (message: WebSocketMessage) => void) {
           }, 3000);
         }
       };
-      
+
       ws.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
@@ -54,7 +54,7 @@ export function useWebSocket(onMessage?: (message: WebSocketMessage) => void) {
     };
 
     connect();
-    
+
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
