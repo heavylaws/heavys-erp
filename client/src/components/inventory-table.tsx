@@ -13,6 +13,7 @@ import { StockAdjustmentDialog } from "@/components/stock-adjustment-dialog";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { BarcodePrintDialog } from "@/components/barcode-print-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -307,6 +308,8 @@ export function InventoryTable({ lowStockData, showComponentsOnly = false, showA
                         <Settings className="h-4 w-4" />
                       </Button>
                     </StockAdjustmentDialog>
+
+                    <BarcodePrintDialog product={product} />
 
                     <Button
                       variant="ghost"

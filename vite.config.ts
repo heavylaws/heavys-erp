@@ -18,7 +18,47 @@ export default defineConfig(async () => {
   return {
     plugins: [
       react(),
-      // VitePWA({...}), // Disabled to prevent reload loops during dev
+      VitePWA({
+        disable: process.env.NODE_ENV !== "production",
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
+        manifest: {
+          name: 'Highway Cafe POS',
+          short_name: 'Highway POS',
+          description: 'Professional Point of Sale System',
+          theme_color: '#ffffff',
+          icons: [
+            {
+              src: 'pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png'
+            },
+            {
+              src: 'pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png'
+            }
+          ]
+        },
+        workbox: {
+          runtimeCaching: [
+            {
+              urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/api'),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'api-cache',
+                expiration: {
+                  maxEntries: 100,
+                  maxAgeSeconds: 300 // 5 minutes cache for API
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            }
+          ]
+        }
+      }),
       ...devPlugins
     ],
     resolve: {

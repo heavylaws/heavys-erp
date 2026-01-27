@@ -723,6 +723,8 @@ export const companySettings = pgTable("company_settings", {
   website: varchar("website", { length: 255 }).default(""),
   taxId: varchar("tax_id", { length: 100 }).default(""),
   logoUrl: text("logo_url").default(""), // Base64 or URL
+  loginSubtitle: text("login_subtitle").default("Please log in to continue"),
+  showDemoCredentials: boolean("show_demo_credentials").default(true),
   currency: varchar("currency", { length: 10 }).default("USD"),
   timezone: varchar("timezone", { length: 100 }).default("UTC"),
   receiptHeader: text("receipt_header").default("Welcome!"),

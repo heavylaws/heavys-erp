@@ -536,7 +536,8 @@ export function EditProductDialog({ product, children }: EditProductDialogProps)
                             type="number"
                             min="0"
                             placeholder="5"
-                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? 0 : parseInt(e.target.value, 10))}
                           />
                         </FormControl>
                         <FormMessage />

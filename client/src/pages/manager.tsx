@@ -78,20 +78,8 @@ export default function ManagerDashboard() {
     }
   };
 
-  // Redirect if not authenticated or not authorized
+  // Redirect if not authorized (Authentication is handled by App.tsx)
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
-      return;
-    }
-
     if (!isLoading && user && !['admin', 'manager'].includes((user as any).role)) {
       toast({
         title: "Access Denied",
@@ -103,7 +91,7 @@ export default function ManagerDashboard() {
       }, 1000);
       return;
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isLoading, user, toast]);
 
   // Fetch analytics data
   const { data: analytics, isLoading: analyticsLoading } = useQuery<Analytics>({

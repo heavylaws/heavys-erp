@@ -1,7 +1,15 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
 
-console.log("[DIAG] main.tsx loaded");
+
+// Cleanup any old service workers in development
+if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    for (const registration of registrations) {
+      registration.unregister();
+    }
+  });
+}
 
 // Safe removeChild patch to prevent "NotFoundError: Failed to execute 'removeChild' on 'Node'"
 // This is often caused by browser extensions (like Google Translate) or React hydration mismatches
@@ -67,16 +75,20 @@ import("./App")
   });
 
 // PWA Service Worker Registration
-// import { registerSW } from 'virtual:pwa-register';
-
-// if (import.meta.env.PROD) {
-//   registerSW({
-//     onNeedRefresh() {
-//       console.log('New content available, please refresh.');
-//     },
-//     onOfflineReady() {
-//       console.log('App is ready to work offline.');
-//       // Optional: Display a toast here "Ready for offline use"
-//     },
-//   });
-// }
+if (import.meta.env.PROD) {
+  // Using a variable for the module name to prevent Vite's static analysis 
+  // from failing the build/dev-transform when the module is missing in development.
+  const pwaModule = 'virtual:pwa-register';
+  import(/* @vite-ignore */ pwaModule).then(({ registerSW }) => {
+    registerSW({
+      onNeedRefresh() {
+        console.log('New content available, please refresh.');
+      },
+      onOfflineReady() {
+        console.log('App is ready to work offline.');
+      },
+    });
+  }).catch(err => {
+    console.warn('PWA Registration failed:', err);
+  });
+}

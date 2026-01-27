@@ -5,11 +5,22 @@ let wssGlobal: WebSocketServer | null = null;
 
 export function setupWebSocket(server: Server) {
     wssGlobal = new WebSocketServer({
-        server,
-        path: '/ws'
+        noServer: true,
+        path: '/ws/app'
     });
 
-    console.log('socket.io/ws setup completed for path /ws');
+    console.log('[WS] WebSocket setup completed for path /ws/app');
+
+    server.on('upgrade', (request, socket, head) => {
+        const pathname = request.url;
+        // Only handle our app's WebSocket path, let Vite HMR handle the rest
+        if (pathname === '/ws/app' || pathname?.startsWith('/ws/app?')) {
+            wssGlobal?.handleUpgrade(request, socket, head, (ws) => {
+                wssGlobal?.emit('connection', ws, request);
+            });
+        }
+        // Other upgrade requests (like Vite HMR) will be handled by their own listeners
+    });
 
     wssGlobal.on('connection', (ws) => {
         console.log('New WebSocket connection established');

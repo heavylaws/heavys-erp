@@ -65,20 +65,8 @@ export default function AdminDashboard() {
     return () => socket.close();
   }, [queryClient]);
 
-  // Redirect if not authenticated or not authorized
+  // Redirect if not authorized (Authentication is handled by App.tsx)
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
-      return;
-    }
-
     if (!isLoading && user && (user as any).role !== 'admin') {
       toast({
         title: "Access Denied",
@@ -86,11 +74,11 @@ export default function AdminDashboard() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/";
+        setLocation("/");
       }, 1000);
       return;
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isLoading, user, toast, setLocation]);
 
   // Fetch analytics data
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
@@ -205,7 +193,7 @@ export default function AdminDashboard() {
                         Run this command on the Client Machine terminal:
                       </p>
                       <code className="block bg-slate-900 text-green-400 p-3 rounded-md text-xs overflow-x-auto font-mono">
-                        wget http://192.168.1.104:5000/api/installer/script -O install.sh && sudo bash install.sh
+                        wget http://localhost:5003/api/installer/script -O install.sh && sudo bash install.sh
                       </code>
                     </div>
 
@@ -238,7 +226,7 @@ export default function AdminDashboard() {
                           <li>Fixes Permission Issues (udev)</li>
                           <li>Installs the POS App</li>
                           <li>Creates Desktop Shortcut</li>
-                          <li>Connects to Server (192.168.1.104)</li>
+                          <li>Connects to Server (localhost:5003)</li>
                         </ul>
                       </div>
                     </div>
@@ -246,10 +234,6 @@ export default function AdminDashboard() {
                 </DialogContent>
               </Dialog>
 
-              <Button variant="outline" size="sm" onClick={() => window.open('/kitchen', '_blank')}>
-                <ChefHat className="h-4 w-4 mr-2" />
-                Kitchen
-              </Button>
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">
                   {user && (user as any).firstName} {user && (user as any).lastName}
@@ -370,7 +354,7 @@ export default function AdminDashboard() {
                   Run this command on the new Client Machine to automatically install the POS App and configure the printer:
                 </p>
                 <code className="block bg-slate-900 text-green-400 p-3 rounded-md text-xs overflow-x-auto font-mono">
-                  wget http://192.168.1.104:5000/api/installer/script -O install.sh && sudo bash install.sh
+                  wget http://localhost:5003/api/installer/script -O install.sh && sudo bash install.sh
                 </code>
               </div>
 

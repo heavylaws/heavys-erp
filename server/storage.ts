@@ -1072,7 +1072,7 @@ export class DatabaseStorage implements IStorage {
       .from(orders)
       .where(
         and(
-          gte(orders.createdAt, sql`CURRENT_DATE - INTERVAL '${days} days'`),
+          gte(orders.createdAt, sql`CURRENT_DATE - make_interval(days => ${days})`),
           or(eq(orders.status, 'delivered'), eq(orders.status, 'ready'))
         )
       )

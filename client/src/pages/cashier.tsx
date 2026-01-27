@@ -114,20 +114,8 @@ export default function CashierPOS() {
     setShowShiftSummary(true);
   };
 
-  // Redirect if not authenticated or not authorized
+  // Redirect if not authorized (Authentication is handled by App.tsx)
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
-      return;
-    }
-
     if (!isLoading && user && !['admin', 'cashier'].includes((user as any).role)) {
       toast({
         title: "Access Denied",
@@ -139,13 +127,45 @@ export default function CashierPOS() {
       }, 1000);
       return;
     }
-  }, [isAuthenticated, isLoading, user, toast]);
+  }, [isLoading, user, toast]);
 
   // Update time every second
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Inactivity-based price refresh (30 seconds)
+  // Only refreshes when cashier is idle AND has no items in current order
+  useEffect(() => {
+    let inactivityTimer: NodeJS.Timeout;
+    const INACTIVITY_TIMEOUT = 30 * 1000; // 30 seconds
+
+    const currentOrder = activeOrders.find(o => o.id === currentOrderId);
+    const hasItemsInOrder = currentOrder && currentOrder.items.length > 0;
+
+    const resetTimer = () => {
+      clearTimeout(inactivityTimer);
+      if (!hasItemsInOrder) {
+        inactivityTimer = setTimeout(() => {
+          // Refresh products and prices after inactivity
+          queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/components'] });
+          console.log('[Cashier] Prices refreshed after 30s inactivity');
+        }, INACTIVITY_TIMEOUT);
+      }
+    };
+
+    // Reset timer on user activity
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(event => window.addEventListener(event, resetTimer));
+    resetTimer(); // Start the timer
+
+    return () => {
+      clearTimeout(inactivityTimer);
+      events.forEach(event => window.removeEventListener(event, resetTimer));
+    };
+  }, [currentOrderId, activeOrders, queryClient]);
 
   // Initialize with first order
   useEffect(() => {
@@ -359,14 +379,8 @@ export default function CashierPOS() {
   });
 
   const handleUnauthorizedError = () => {
-    toast({
-      title: "Unauthorized",
-      description: "You are logged out. Logging in again...",
-      variant: "destructive",
-    });
-    setTimeout(() => {
-      window.location.href = "/api/login";
-    }, 500);
+    // Authentication is handled by App.tsx; no need to redirect here.
+    console.warn('Unauthorized error detected by query/mutation handler');
   };
 
   const createNewOrder = () => {
@@ -750,14 +764,7 @@ export default function CashierPOS() {
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
+        handleUnauthorizedError();
         return;
       }
       toast({
