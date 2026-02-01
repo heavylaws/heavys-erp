@@ -2405,25 +2405,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase 2: Architecture Modernization - Mount v1 modular routes
   app.use('/api/v1', v1Routes);
 
-  const httpServer = createServer(app);
-
-  // Initialize WebSocket Service (Shared)
-  // Uses path /ws/app to avoid conflict with Vite's HMR WebSocket
-  const { setupWebSocket } = await import('./services/websocket');
-  wssGlobal = setupWebSocket(httpServer);
-
-  return httpServer;
-
   app.use("/api/export", exportRoutes);
 
   // Thermal Printer Routes
   app.post('/api/print/receipt', isAuthenticated, async (req: any, res) => {
     try {
+      console.log('[PRINT-DEBUG] Receipt print request received');
+      console.log('[PRINT-DEBUG] Payload:', JSON.stringify(req.body, null, 2));
       const { receiptPrinter } = await import('./printer');
+      console.log('[PRINT-DEBUG] Printer module loaded, calling printReceipt...');
       await receiptPrinter.printReceipt(req.body);
+      console.log('[PRINT-DEBUG] printReceipt completed successfully');
       res.json({ success: true, message: 'Receipt printed successfully' });
     } catch (error: any) {
-      console.error('Print error:', error);
+      console.error('[PRINT-DEBUG] Print error:', error);
       res.status(500).json({ success: false, message: error.message });
     }
   });
@@ -2439,14 +2434,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Login route
-  app.post("/api/login", async (req, res) => {
-    const { username, password } = req.body;
-    // Implement your login logic here
-    // For example, check username and password against the database
-    // If valid, create a session and return user data
-    // If invalid, return an error message
-  });
+  const httpServer = createServer(app);
+
+  // Initialize WebSocket Service (Shared)
+  // Uses path /ws/app to avoid conflict with Vite's HMR WebSocket
+  const { setupWebSocket } = await import('./services/websocket');
+  wssGlobal = setupWebSocket(httpServer);
+
+  return httpServer;
+  // NOTE: Routes below here would be unreachable if placed after return httpServer;
 
   if (ENABLE_OPTIONS_SYSTEM) {
     // --- Option System Health ---

@@ -1,63 +1,77 @@
-import { writeFile } from 'fs/promises';
-import { constants, accessSync } from 'fs';
-// @ts-ignore
-import { ArabicShaper } from 'arabic-persian-reshaper';
-import iconv from 'iconv-lite';
-import { CP864_MAPPING } from './cp864-map';
+import { spawn } from 'child_process';
+import * as fs from 'fs';
 
-// ESC/POS Commands
-const CMD = {
-    INIT: Buffer.from([0x1B, 0x40]),
-    KANJI_OFF: Buffer.from([0x1C, 0x2E]),
-    // Code Page 22 (Arabic PC864)
-    CODEPAGE_ARABIC: Buffer.from([0x1B, 0x74, 22]),
-    ALIGN_CENTER: Buffer.from([0x1B, 0x61, 0x01]),
-    ALIGN_LEFT: Buffer.from([0x1B, 0x61, 0x00]),
-    ALIGN_RIGHT: Buffer.from([0x1B, 0x61, 0x02]),
-    BOLD_ON: Buffer.from([0x1B, 0x45, 0x01]),
-    BOLD_OFF: Buffer.from([0x1B, 0x45, 0x00]),
-    SIZE_NORMAL: Buffer.from([0x1D, 0x21, 0x00]),
-    SIZE_DOUBLE: Buffer.from([0x1D, 0x21, 0x11]),
-    CUT: Buffer.from([0x1D, 0x56, 0x41, 0x03]),
-    FEED: Buffer.from([0x0A]),
+// ESC/POS thermal printer implementation
+const ESC = '\x1b';
+const GS = '\x1d';
+const FS = '\x1c';
+const ESCPOS = {
+    INIT: ESC + '@',           // Initialize printer
+    ALIGN_CENTER: ESC + 'a' + '\x01',
+    ALIGN_LEFT: ESC + 'a' + '\x00',
+    BOLD_ON: ESC + 'E' + '\x01',
+    BOLD_OFF: ESC + 'E' + '\x00',
+    CUT: GS + 'V' + '\x00',     // Full cut
+    PARTIAL_CUT: GS + 'V' + '\x01',  // Partial cut
+    FEED_LINES: (n: number) => ESC + 'd' + String.fromCharCode(n),
+    // Character encoding commands
+    UTF8_MODE: ESC + 't' + '\xff',   // Select UTF-8 mode (code page 255)
+    ARABIC_CODEPAGE: ESC + 't' + '\x16',  // Code page 22 = Arabic (Windows-1256)
+    CODEPAGE_PC864: ESC + 't' + '\x17',   // Code page 23 = PC864 Arabic
+    // Enable multi-byte character mode for Arabic/Chinese
+    KANJI_MODE_ON: FS + '&',
+    KANJI_MODE_OFF: FS + '.',
 };
 
 export class ReceiptPrinter {
-    private devicePath: string;
+    private devicePath = '/dev/usb/lp1';  // USB printer device
 
     constructor() {
-        // Try multiple possible device paths
-        const possiblePaths = ['/dev/usb/lp1', '/dev/usb/lp0', '/dev/lp1', '/dev/lp0'];
-        this.devicePath = '';
-
-        for (const path of possiblePaths) {
-            try {
-                // Check synchronously if file exists
-                accessSync(path, constants.F_OK);
-                this.devicePath = path;
-                console.log(`Printer device found at: ${this.devicePath}`);
-                break;
-            } catch (err) {
-                console.log(`Failed to access ${path}:`, err);
-                // Try next path
-            }
-        }
-
-        if (!this.devicePath) {
-            console.warn('No writable printer device found. Print operations will fail.');
-        }
+        console.log('Printer initialized for direct USB (ESC/POS Mode)');
     }
 
-    private async write(buffer: Buffer): Promise<void> {
-        if (!this.devicePath) {
-            throw new Error('No printer device available');
-        }
+    private async write(content: string): Promise<void> {
+        console.log('[PRINTER-DEBUG] write() called, content length:', content.length);
+        return new Promise((resolve, reject) => {
+            // Add ESC/POS initialization, Arabic encoding, and cut commands
+            // Use Windows-1256 Arabic code page for proper Arabic text display
+            const escposContent = ESCPOS.INIT + ESCPOS.ARABIC_CODEPAGE + content + '\n\n\n' + ESCPOS.PARTIAL_CUT;
 
-        try {
-            await writeFile(this.devicePath, buffer);
-        } catch (error: any) {
-            throw new Error(`Failed to write to printer: ${error.message}`);
-        }
+            // Try direct USB first, fallback to lp command
+            try {
+                if (fs.existsSync(this.devicePath)) {
+                    console.log('[PRINTER-DEBUG] Writing directly to', this.devicePath);
+                    fs.writeFileSync(this.devicePath, escposContent);
+                    console.log('Print job sent successfully via direct USB');
+                    resolve();
+                    return;
+                }
+            } catch (err: any) {
+                console.log('[PRINTER-DEBUG] Direct USB failed, falling back to lp:', err.message);
+            }
+
+            // Fallback to lp command with Raw queue
+            console.log('[PRINTER-DEBUG] Using lp with Printer-POS-80-Raw');
+            const lp = spawn('lp', ['-d', 'Printer-POS-80-Raw', '-o', 'raw']);
+
+            lp.stdin.write(escposContent);
+            lp.stdin.end();
+
+            lp.on('error', (err) => {
+                console.error('Failed to spawn lp:', err);
+                reject(err);
+            });
+
+            lp.on('close', (code) => {
+                if (code === 0) {
+                    console.log('Print job sent successfully via lp (Raw Mode)');
+                    resolve();
+                } else {
+                    console.error(`lp command failed with code ${code}`);
+                    reject(new Error(`Print job failed (lp exit code: ${code})`));
+                }
+            });
+        });
     }
 
     private formatCurrency(amount: number | string | null | undefined): string {
@@ -65,52 +79,11 @@ export class ReceiptPrinter {
         return `$${num.toFixed(2)}`;
     }
 
-    private text(str: string): Buffer {
-        if (!str) return Buffer.from('');
-
-        // Check for Arabic characters
-        const hasArabic = /[\u0600-\u06FF]/.test(str);
-
-        if (hasArabic) {
-            try {
-                // Reshape Arabic (connect letters)
-                const reshaped = ArabicShaper.convertArabic(str);
-
-                // Reverse for RTL printing
-                const reversed = reshaped.split('').reverse().join('');
-
-                // Map to CP864 bytes
-                const buffer = Buffer.alloc(reversed.length);
-                for (let i = 0; i < reversed.length; i++) {
-                    const charCode = reversed.charCodeAt(i);
-                    // Check custom mapping first, then standard iconv
-                    if (CP864_MAPPING[charCode]) {
-                        buffer[i] = CP864_MAPPING[charCode];
-                    } else {
-                        // Fallback for numbers/English within the Arabic string
-                        if (charCode <= 0x7F) {
-                            buffer[i] = charCode;
-                        } else {
-                            // Try iconv as last resort or '?'
-                            const encoded = iconv.encode(reversed[i], 'cp864');
-                            buffer[i] = encoded.length > 0 ? encoded[0] : 0x3F; // 0x3F is '?'
-                        }
-                    }
-                }
-                return buffer;
-            } catch (e) {
-                console.error('Arabic shaping error:', e);
-                return Buffer.from(str, 'utf-8');
-            }
-        }
-
-        // Standard POS encoding for English
-        return iconv.encode(str, 'cp437');
-    }
     private convertToLbp(usdAmount: number, rate: number = 89500): string {
         const lbp = Math.ceil((usdAmount * rate) / 5000) * 5000;
         return lbp.toLocaleString();
     }
+
     async printReceipt(receiptData: {
         storeName: string;
         address?: string;
@@ -127,163 +100,87 @@ export class ReceiptPrinter {
         footerText?: string;
         exchangeRate?: number;
     }): Promise<void> {
-        const timestamp = new Date(receiptData.timestamp);
-        const buffers: Buffer[] = [];
+        console.log('[PRINTER-DEBUG] printReceipt() called with orderId:', receiptData.orderId);
+        const lines: string[] = [];
         const RATE = receiptData.exchangeRate || 89500;
+        const timestamp = new Date(receiptData.timestamp);
 
-        // Build Payload
-        buffers.push(CMD.INIT);
-        buffers.push(CMD.KANJI_OFF); // Disable Chinese mode
-        buffers.push(CMD.CODEPAGE_ARABIC);
+        // Header
+        lines.push('--------------------------------');
+        lines.push(`      ${receiptData.storeName || 'Highway Cafe'}`);
+        lines.push('--------------------------------');
+        if (receiptData.address) lines.push(receiptData.address);
+        if (receiptData.phone) lines.push(receiptData.phone);
+        lines.push(`Order #: ${receiptData.orderId}`);
+        lines.push(`Date: ${timestamp.toLocaleString()}`);
+        lines.push('--------------------------------');
 
-        buffers.push(CMD.ALIGN_CENTER);
-        buffers.push(CMD.BOLD_ON);
-        buffers.push(CMD.SIZE_DOUBLE);
-        buffers.push(this.text(receiptData.storeName || 'Highway Cafe'));
-        buffers.push(CMD.FEED);
-
-        buffers.push(CMD.SIZE_NORMAL);
-        buffers.push(CMD.BOLD_OFF);
-
-        if (receiptData.address) {
-            buffers.push(this.text(receiptData.address));
-            buffers.push(CMD.FEED);
-        }
-        if (receiptData.phone) {
-            buffers.push(this.text(receiptData.phone));
-            buffers.push(CMD.FEED);
-        }
-
-        buffers.push(this.text('------------------------------------------------'));
-        buffers.push(CMD.FEED);
-
-        buffers.push(CMD.ALIGN_LEFT);
-        buffers.push(this.text(`Order #: ${receiptData.orderId}`));
-        buffers.push(CMD.FEED);
-        buffers.push(this.text(`Date: ${timestamp.toLocaleString()}`));
-        buffers.push(CMD.FEED);
-
-        buffers.push(this.text('------------------------------------------------'));
-        buffers.push(CMD.FEED);
-
-        // Table Header
-        buffers.push(this.text('Item                           Qty    Price'));
-        buffers.push(CMD.FEED);
-        buffers.push(this.text('------------------------------------------------'));
-        buffers.push(CMD.FEED);
+        // Items
+        lines.push('Item             Qty    Price');
+        lines.push('--------------------------------');
 
         if (Array.isArray(receiptData.items)) {
             receiptData.items.forEach((item: any) => {
                 const nameStr = item.name || 'Unknown';
                 const qty = item.quantity || 0;
                 const totalUsd = item.total || 0;
-
-                // Calculate Unit Prices
                 const unitUsd = qty > 0 ? totalUsd / qty : 0;
 
-                // Convert to LBP
                 const totalLbp = this.convertToLbp(totalUsd, RATE);
-                const unitLbp = this.convertToLbp(unitUsd, RATE);
 
-                // Line 1: Item Name (Bold)
-                buffers.push(CMD.BOLD_ON);
-                buffers.push(this.text(nameStr));
-                buffers.push(CMD.BOLD_OFF);
-                buffers.push(CMD.FEED);
-
-                // Line 2: Details
-                // Format: " 2 @ $5.00/450,000      $10.00/900,000"
-                const UNIT_STR = `$${unitUsd.toFixed(2)}/${unitLbp}`;
-                const TOTAL_STR = `$${totalUsd.toFixed(2)}/${totalLbp}`;
-
-                const leftPart = ` ${qty} @ ${UNIT_STR}`;
-                const rightPart = TOTAL_STR;
-
-                // Width 48
-                const padding = 48 - leftPart.length - rightPart.length;
-                const spaces = padding > 0 ? ' '.repeat(padding) : ' ';
-
-                buffers.push(this.text(leftPart + spaces + rightPart));
-                buffers.push(CMD.FEED);
-                buffers.push(CMD.FEED); // Extra spacing
+                lines.push(`${nameStr}`);
+                lines.push(`${qty} x $${unitUsd.toFixed(2)}    $${totalUsd.toFixed(2)}`);
+                lines.push(`(${totalLbp} LBP)`);
+                lines.push('');
             });
         }
 
-        buffers.push(this.text('------------------------------------------------'));
-        buffers.push(CMD.FEED);
+        lines.push('--------------------------------');
 
         // Totals
-        buffers.push(CMD.ALIGN_RIGHT);
-
         const subtotal = this.formatCurrency(receiptData.subtotal || 0);
-        buffers.push(this.text(`Subtotal: ${subtotal}`));
-        buffers.push(CMD.FEED);
-
+        lines.push(`Subtotal: ${subtotal}`);
         if (receiptData.tax) {
-            buffers.push(this.text(`Tax: ${this.formatCurrency(receiptData.tax || 0)}`));
-            buffers.push(CMD.FEED);
+            lines.push(`Tax: ${this.formatCurrency(receiptData.tax || 0)}`);
         }
-
-        buffers.push(CMD.BOLD_ON);
-        buffers.push(CMD.SIZE_DOUBLE);
-        buffers.push(this.text(`TOTAL: ${this.formatCurrency(receiptData.total)}`));
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.SIZE_NORMAL);
-        buffers.push(CMD.BOLD_OFF);
-
-        buffers.push(this.text('------------------------------------------------'));
-        buffers.push(CMD.FEED);
+        lines.push(`TOTAL: ${this.formatCurrency(receiptData.total)}`);
+        lines.push('--------------------------------');
 
         const payMethod = (receiptData.paymentMethod || 'CASH').toUpperCase();
-        buffers.push(this.text(`Payment: ${payMethod}`));
-        buffers.push(CMD.FEED);
+        lines.push(`Payment: ${payMethod}`);
 
         if (receiptData.cashReceived) {
-            buffers.push(this.text(`Cash: ${this.formatCurrency(receiptData.cashReceived)}`));
-            buffers.push(CMD.FEED);
-            buffers.push(this.text(`Change: ${this.formatCurrency(receiptData.change || 0)}`));
-            buffers.push(CMD.FEED);
+            lines.push(`Cash: ${this.formatCurrency(receiptData.cashReceived)}`);
+            lines.push(`Change: ${this.formatCurrency(receiptData.change || 0)}`);
         }
 
+        lines.push('--------------------------------');
         // Footer
-        buffers.push(CMD.ALIGN_CENTER);
-        buffers.push(CMD.FEED);
         if (receiptData.footerText) {
-            buffers.push(this.text(receiptData.footerText));
-            buffers.push(CMD.FEED);
+            lines.push(receiptData.footerText);
         } else {
-            buffers.push(this.text('Thank you for your business!'));
-            buffers.push(CMD.FEED);
+            lines.push('Thank you for your business!');
         }
 
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.CUT);
+        // Feed logic manually added by newlines
+        lines.push('\n\n\n\n\n');
+        // Some drivers might need a cut command, but in text mode we usually just feed.
+        // If the printer supports partial cut on FF, it might work, otherwise we rely on user tearing.
 
-        const fullPayload = Buffer.concat(buffers);
-        await this.write(fullPayload);
+        const fullText = lines.join('\n');
+        await this.write(fullText);
     }
 
     async testPrint(): Promise<void> {
-        let buffers: Buffer[] = [];
-        buffers.push(CMD.INIT);
-        buffers.push(CMD.ALIGN_CENTER);
-        buffers.push(CMD.BOLD_ON);
-        buffers.push(CMD.SIZE_DOUBLE);
-        buffers.push(this.text('TEST PRINT'));
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.SIZE_NORMAL);
-        buffers.push(CMD.BOLD_OFF);
-        buffers.push(this.text('Printer is working correctly!'));
-        buffers.push(CMD.FEED);
-        buffers.push(this.text(`Date: ${new Date().toLocaleString()}`));
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.FEED);
-        buffers.push(CMD.CUT);
+        const lines: string[] = [];
+        lines.push('--------------------------------');
+        lines.push('      TEST PRINT');
+        lines.push('--------------------------------');
+        lines.push('Printer is working correctly!');
+        lines.push(`Date: ${new Date().toLocaleString()}`);
+        lines.push('\n\n\n\n\n');
 
-        await this.write(Buffer.concat(buffers));
+        await this.write(lines.join('\n'));
     }
 }
 

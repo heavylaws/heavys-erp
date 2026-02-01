@@ -42,19 +42,38 @@ export async function setupVite(app: Express, server: Server) {
   });
 
   app.use(vite.middlewares);
-  app.use("*", async (req: Request, res: Response, next: NextFunction) => {
+
+  // Debug: Log when this catch-all is reached for API routes
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.originalUrl.startsWith('/api/')) {
+      console.log('[VITE-DEBUG] API route reached catch-all:', req.method, req.originalUrl);
+    }
+    next();
+  });
+
+  // Only handle non-API routes with this catch-all
+  // API routes are already registered in createApp before Vite setup
+  app.use((req: Request, res: Response, next: NextFunction) => {
     const url = req.originalUrl;
 
-    try {
-      const clientTemplate = path.resolve(process.cwd(), "client", "index.html");
-
-      // always reload the index.html file from disk incase it changes
-      let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e as Error);
-      next(e);
+    // Skip API routes - they should have already been handled by Express routes
+    // If we reach here for an API route, it means no Express route matched
+    if (url.startsWith('/api/')) {
+      // Don't handle API routes here - pass to Express error handler
+      return next();
     }
+
+    // For all other routes, serve the SPA
+    const clientTemplate = path.resolve(process.cwd(), "client", "index.html");
+
+    fs.promises.readFile(clientTemplate, "utf-8")
+      .then(template => vite.transformIndexHtml(url, template))
+      .then(page => {
+        res.status(200).set({ "Content-Type": "text/html" }).end(page);
+      })
+      .catch(e => {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      });
   });
 }

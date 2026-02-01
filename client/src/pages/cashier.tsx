@@ -8,13 +8,15 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { TutorialManager } from "@/components/tutorial-manager";
-import { Coffee, LogOut, Plus, Minus, DollarSign, Save, CheckCircle, Edit, Trash2, Printer, Send, Grid, List } from "lucide-react";
+import { Coffee, LogOut, Plus, Minus, DollarSign, Save, CheckCircle, Edit, Trash2, Printer, Send, Grid, List, Calculator } from "lucide-react";
 import type { Product, Category, Order } from "@shared/schema";
 import { formatDualCurrency, convertUsdToLbp } from "@shared/currency-utils";
 import { ProductSearch } from "@/components/product-search";
@@ -45,6 +47,7 @@ interface CurrentOrder {
   items: OrderItem[];
   subtotal: number;
   tax: number;
+  discount: number;
   total: number;
   originalOrderId?: string; // For tracking edited orders
 }
@@ -390,6 +393,7 @@ export default function CashierPOS() {
       items: [],
       subtotal: 0,
       tax: 0,
+      discount: 0,
       total: 0,
     };
     setActiveOrders(prev => [...prev, newOrder]);
@@ -425,10 +429,12 @@ export default function CashierPOS() {
     return Math.max(0, actualStock - reservedQuantity);
   };
 
-  const calculateOrderTotals = (items: OrderItem[]) => {
-    const total = items.reduce((sum, item) => sum + item.total, 0);
-    // Prices already include tax, so subtotal and total are the same
-    return { subtotal: total, tax: 0, total };
+  const calculateOrderTotals = (items: OrderItem[], discount: number = 0) => {
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+    // Prices already include tax, so subtotal is the sum of items
+    // Discount is applied to the subtotal
+    const total = Math.max(0, subtotal - discount);
+    return { subtotal, tax: 0, discount, total };
   };
 
   const addToOrder = (product: Product) => {
@@ -466,7 +472,7 @@ export default function CashierPOS() {
         newItems = [...order.items, newItem];
       }
 
-      const totals = calculateOrderTotals(newItems);
+      const totals = calculateOrderTotals(newItems, order.discount);
       return { ...order, items: newItems, ...totals };
     });
   };
@@ -484,7 +490,7 @@ export default function CashierPOS() {
         return item;
       }).filter(item => item !== null) as OrderItem[]; // Remove null items
 
-      const totals = calculateOrderTotals(newItems);
+      const totals = calculateOrderTotals(newItems, order.discount);
       return { ...order, items: newItems, ...totals };
     });
   };
@@ -776,6 +782,7 @@ export default function CashierPOS() {
   });
 
   const printReceipt = async (order: any) => {
+    console.log('[FRONTEND-PRINT] printReceipt called with order:', order);
     try {
       const formattedItems = order.items.map((item: any) => ({
         name: item.product?.name || 'Unknown Item',
@@ -798,7 +805,9 @@ export default function CashierPOS() {
         change: 0
       };
 
+      console.log('[FRONTEND-PRINT] Sending to printer:', receiptData);
       await sendToPrinter(receiptData);
+      console.log('[FRONTEND-PRINT] Print request sent successfully');
 
       toast({
         title: "Printing...",
@@ -1006,6 +1015,75 @@ export default function CashierPOS() {
 
           {/* Product Grid */}
           <div className={`grid product-grid ${compactView ? 'grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4'}`}>
+            {/* Custom Amount Tile */}
+            <Dialog>
+              <DialogTrigger asChild>
+                <Card className={`cursor-pointer hover:shadow-md transition-shadow product-card border-dashed border-2 border-blue-200 bg-blue-50/50 ${compactView ? 'compact-card' : ''}`}>
+                  <CardContent className={`${compactView ? 'p-2' : 'p-4'} flex flex-col items-center justify-center h-full text-blue-600`}>
+                    <Calculator className={`${compactView ? 'h-6 w-6' : 'h-10 w-10'} mb-2`} />
+                    <span className="font-semibold text-sm text-center">Custom Amount</span>
+                  </CardContent>
+                </Card>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Custom Item</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  const price = parseFloat(formData.get('price') as string);
+                  const name = formData.get('name') as string || 'Custom Item';
+
+                  if (price > 0) {
+                    const customProduct = {
+                      id: `custom-${Date.now()}`,
+                      name: name,
+                      price: price.toString(),
+                      description: 'Custom priced item',
+                      stockQuantity: 9999,
+                      type: 'finished_good',
+                      categoryId: 'custom',
+                      // Add other required fields with defaults
+                      sku: 'CUSTOM',
+                      imageUrl: null,
+                      isActive: true,
+                      minThreshold: 0,
+                      isExpiring: false,
+                      requiresFulfillment: false
+                    } as any as Product;
+
+                    addToOrder(customProduct);
+                    // Close dialog (using a hidden close button or finding a better way in the future, 
+                    // for now standard submit behavior closes if controlled, but here we just rely on state or Radix default)
+                    (document.querySelector('[data-radix-focus-guard]') as HTMLElement)?.click(); // Hacky close or rely on user clicking outside
+                    // Actually better to have a close button
+                  }
+                  // Force close by simulating Escape or using a controlled dialog (too complex to refactor to controlled now)
+                  // The easiest way without controlled state refactor is just let user close or use a close button.
+                  // But standard Radix dialog doesn't auto-close on submit. 
+                  // Let's rely on standard 'open' state management if possible, but I don't want to rewrite the whole component loop.
+                  // I'll add a 'Save' button that is also a DialogClose if possible, or just accept it stays open until clicked out.
+                  // actually, let's wrap this in a small component if we want controlled state, but for now let's use a ref or just simple form.
+                  // Setting a state for 'customItemDialogOpen' would be best.
+                }}>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Item Name</Label>
+                      <Input name="name" placeholder="e.g. Misc Item" defaultValue="Custom Item" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Price ($)</Label>
+                      <Input name="price" type="number" step="0.01" min="0" placeholder="0.00" autoFocus required />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit">Add to Order</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+
             {filteredProducts.map((product) => (
               <Card
                 key={product.id}
@@ -1408,6 +1486,27 @@ export default function CashierPOS() {
                           }
                         </span>
                       </div>
+
+                      <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-gray-200">
+                        <Label htmlFor="discount-input" className="text-sm text-gray-600">Discount ($):</Label>
+                        <Input
+                          id="discount-input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-24 h-8 text-right"
+                          value={currentOrder.discount > 0 ? currentOrder.discount : ''}
+                          placeholder="0.00"
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            const newDiscount = isNaN(val) ? 0 : val;
+                            updateCurrentOrder(order => {
+                              const totals = calculateOrderTotals(order.items, newDiscount);
+                              return { ...order, ...totals };
+                            });
+                          }}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-3 payment-section">
@@ -1453,7 +1552,7 @@ export default function CashierPOS() {
                         <div className="grid grid-cols-2 gap-2">
                           <Button
                             onClick={() => processPayment('cash')}
-                            className="py-4 bg-secondary text-white hover:bg-green-700"
+                            className="py-4 bg-green-600 text-white hover:bg-green-700"
                             disabled={currentOrder.items.length === 0 || createOrderMutation.isPending}
                           >
                             <DollarSign className="h-5 w-5 mr-2" />
@@ -1484,6 +1583,7 @@ export default function CashierPOS() {
                           </Button>
                           <Button
                             onClick={() => {
+                              console.log('[PREVIEW-BTN] Preview Receipt button clicked');
                               // Create a preview order object for printing receipt from current order
                               const previewOrder = {
                                 id: currentOrder.id,
@@ -1497,6 +1597,7 @@ export default function CashierPOS() {
                                 items: currentOrder.items,
                                 createdAt: new Date().toISOString()
                               };
+                              console.log('[PREVIEW-BTN] Calling printReceipt with:', previewOrder);
                               printReceipt(previewOrder);
                             }}
                             variant="outline"

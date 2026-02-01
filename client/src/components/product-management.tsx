@@ -32,6 +32,7 @@ import type { Product, Category } from "@shared/schema";
 export function ProductManagement() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const { data: allProducts = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
@@ -39,15 +40,21 @@ export function ProductManagement() {
 
   // Smart search across product name, description, barcode
   const products = useMemo(() => {
-    if (!searchTerm) return allProducts;
+    let filtered = allProducts;
+
+    if (selectedCategory) {
+      filtered = filtered.filter(p => p.categoryId === selectedCategory);
+    }
+
+    if (!searchTerm) return filtered;
 
     const searchLower = searchTerm.toLowerCase();
-    return allProducts.filter(product =>
+    return filtered.filter(product =>
       product.name.toLowerCase().includes(searchLower) ||
       product.description?.toLowerCase().includes(searchLower) ||
       product.barcode?.toLowerCase().includes(searchLower)
     );
-  }, [allProducts, searchTerm]);
+  }, [allProducts, searchTerm, selectedCategory]);
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
@@ -151,32 +158,54 @@ export function ProductManagement() {
 
       {/* Modern Search Bar */}
       <Card className="glass-card border-none shadow-sm">
-        <CardContent className="p-4 flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-            <Input
-              placeholder="Search products by name, barcode, or description..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-12 h-12 bg-white/50 border-gray-100 focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10 transition-all rounded-xl text-lg"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
+        <CardContent className="p-4 flex flex-col gap-4">
+          <div className="flex items-center gap-4 w-full">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+              <Input
+                placeholder="Search products by name, barcode, or description..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-12 h-12 bg-white/50 border-gray-100 focus:border-blue-300 focus:ring-4 focus:ring-blue-500/10 transition-all rounded-xl text-lg"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+            <div className="hidden md:flex gap-2">
+              {/* Stock Status Filter (Placeholder for now) */}
+              <Badge variant="outline" className="h-10 px-4 rounded-lg cursor-pointer hover:bg-white hover:border-blue-200 transition-colors">
+                Stock Status
+              </Badge>
+            </div>
           </div>
-          {/* Future Filter Chips can go here */}
-          <div className="hidden md:flex gap-2">
-            <Badge variant="outline" className="h-10 px-4 rounded-lg cursor-pointer hover:bg-white hover:border-blue-200 transition-colors">
+
+          {/* Category Tabs */}
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+            <Button
+              size="sm"
+              variant={selectedCategory === null ? "default" : "outline"}
+              className={`rounded-full px-4 ${selectedCategory === null ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-blue-50 text-gray-600 border-gray-200'}`}
+              onClick={() => setSelectedCategory(null)}
+            >
               All Categories
-            </Badge>
-            <Badge variant="outline" className="h-10 px-4 rounded-lg cursor-pointer hover:bg-white hover:border-blue-200 transition-colors">
-              Stock Status
-            </Badge>
+            </Button>
+            {categories.map((category) => (
+              <Button
+                key={category.id}
+                size="sm"
+                variant={selectedCategory === category.id ? "default" : "outline"}
+                className={`rounded-full px-4 ${selectedCategory === category.id ? 'bg-blue-600 hover:bg-blue-700' : 'hover:bg-blue-50 text-gray-600 border-gray-200'}`}
+                onClick={() => setSelectedCategory(category.id)}
+              >
+                {category.name}
+              </Button>
+            ))}
           </div>
         </CardContent>
       </Card>
