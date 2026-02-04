@@ -24,6 +24,7 @@ interface InvoiceData {
     };
     items: InvoiceItem[];
     subtotal: number;
+    discount?: number;  // Added discount field
     tax: number;
     taxRate: number;
     total: number;
@@ -203,15 +204,24 @@ export function InvoiceTemplate({ invoice, company, onClose, showActions = true 
                                         <td className="p-2 text-gray-600">Subtotal</td>
                                         <td className="p-2 text-right">{formatPrimary(invoice.subtotal)}</td>
                                     </tr>
+                                    {(invoice.discount || 0) > 0 && (
+                                        <tr>
+                                            <td className="p-2 text-gray-600">Discount</td>
+                                            <td className="p-2 text-right text-red-600">
+                                                -{formatPrimary(invoice.discount!)}
+                                            </td>
+                                        </tr>
+                                    )}
                                     <tr>
-                                        <td className="p-2 text-gray-600">Tax ({invoice.taxRate}%)</td>
+                                        <td className="p-2 text-gray-600">Tax ({invoice.taxRate * 100}%)</td>
                                         <td className="p-2 text-right">{formatPrimary(invoice.tax)}</td>
                                     </tr>
-                                    <tr className="bg-gray-100 font-bold">
+                                    <tr className="font-bold text-lg bg-gray-50">
                                         <td className="p-3">Total</td>
                                         <td className="p-3 text-right">
                                             <div className="text-lg">{formatPrimary(invoice.total)}</div>
                                             <div className="text-gray-600 font-normal text-sm">{formatSecondary(invoice.total)}</div>
+                                            <div className="text-gray-500 font-normal text-xs mt-1">(Prices include Tax)</div>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -260,9 +270,10 @@ export function useInvoiceGenerator() {
         }));
 
         const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-        const taxRate = 10; // Default 10% - can be configurable
-        const tax = subtotal * (taxRate / 100);
-        const total = subtotal + tax;
+        // Prices are tax inclusive, so no extra tax is added
+        const taxRate = 0;
+        const tax = 0;
+        const total = subtotal; // Total is simply the sum of inclusive prices
 
         return {
             invoiceNumber: generateInvoiceNumber(),
@@ -275,11 +286,12 @@ export function useInvoiceGenerator() {
                 taxId: customer.taxId,
             } : undefined,
             items,
-            subtotal,
-            tax,
-            taxRate,
-            total,
-            paymentMethod: order.paymentMethod || 'Cash',
+            subtotal: Number(order.subtotal),
+            discount: Number(order.discountTotal || 0),
+            tax: Number(order.tax),
+            taxRate: 0, // Tax is inclusive
+            total: Number(order.total),
+            paymentMethod: order.paymentMethod || 'cash',
             notes: order.notes,
         };
     };

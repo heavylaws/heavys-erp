@@ -492,8 +492,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/settings/company', isAuthenticated, isAdmin, async (req, res) => {
+  app.post('/api/settings/company', isAuthenticated, async (req, res) => {
     try {
+      const user = (req as any).session?.user;
+      if (!user || !['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
       console.log('Received company settings update:', req.body);
       const settingsData = insertCompanySettingsSchema.parse(req.body);
       const updatedSettings = await storage.updateCompanySettings(settingsData);
@@ -501,6 +506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       if (error instanceof z.ZodError) {
         console.error('Validation error updating company settings:', JSON.stringify(error.errors, null, 2));
+        console.error('Received Body was:', req.body);
         res.status(400).json({ message: 'Validation failed', errors: error.errors });
       } else {
         console.error('Error updating company settings:', error);
@@ -1621,12 +1627,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // print placeholder with appropriate user ID based on role and required fields
+      // Extract discount from request or default to 0
+      const discountTotal = parseFloat(orderData.discountTotal || '0');
+
       const orderWithNumber = {
         ...orderData,
         orderNumber,
         subtotal: subtotal.toFixed(2),
+        discountTotal: discountTotal.toFixed(2),
         tax: '0.00', // Tax-inclusive pricing - no separate tax
-        total: subtotal.toFixed(2), // For now, total equals subtotal (no tax)
+        total: (subtotal - discountTotal).toFixed(2), // Subtract discount from total
         status: orderData.status || 'pending', // All new orders start as pending for cashier processing
         // cashierId is NOT NULL in schema, so for courier-created orders we temporarily
         // assign the courier as the cashier to satisfy the constraint. We also set courierId
@@ -1763,6 +1773,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { id } = req.params;
       const { order: orderData, items } = req.body;
+
+      console.log(`[PUT /api/orders/${id}] Received update request`);
+      console.log('Order Data Payload:', JSON.stringify(orderData, null, 2));
 
       // Update the order
       const updatedOrder = await storage.updateOrder(id, orderData);

@@ -225,6 +225,7 @@ export const orders = pgTable("orders", {
   status: orderStatusEnum("status").notNull().default('pending'),
   sentToFulfillment: boolean("sent_to_fulfillment").notNull().default(false),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  discountTotal: decimal("discount_total", { precision: 10, scale: 2 }).default('0'), // Added discount field
   tax: decimal("tax", { precision: 10, scale: 2 }).notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: varchar("payment_method", { length: 50 }),

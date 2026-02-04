@@ -12,7 +12,7 @@ import { Shield, Users, Package, FolderOpen, ChefHat, ShoppingCart, LogOut, Sett
 import { UserManagement } from "@/components/user-management";
 import { ProductManagement } from "@/components/product-management";
 import { CategoryManagement } from "@/components/category-management";
-import { OrderManagement } from "@/components/order-management";
+import { EnhancedOrderManagement } from "@/components/enhanced-order-management";
 import { InventoryTable } from "@/components/inventory-table";
 import { SalesChart } from "@/components/sales-chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +27,7 @@ import { CustomerManagement } from '@/components/customer-management';
 import { PurchaseOrderManagement } from '@/components/purchase-order-management';
 import { OrganizationSettings } from '@/components/organization-settings';
 import { Truck, ClipboardList } from "lucide-react";
+import { ReceiptSettingsDialog } from "@/components/receipt-settings-dialog";
 
 interface Analytics {
   sales: { total: number; count: number };
@@ -475,7 +476,7 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="orders" className="space-y-6">
-            <OrderManagement />
+            <EnhancedOrderManagement />
           </TabsContent>
 
 
@@ -786,6 +787,9 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="organization" className="space-y-6">
+            <div className="flex justify-end mb-4">
+              <ReceiptSettingsDialog />
+            </div>
             <OrganizationSettings />
           </TabsContent>
         </Tabs>

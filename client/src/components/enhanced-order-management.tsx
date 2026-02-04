@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Trash2, Edit, AlertTriangle, Search, Filter, RefreshCw, ExternalLink, X, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { printReceipt } from "@/lib/printer-api";
 import { InvoiceTemplate, useInvoiceGenerator } from "@/components/invoice-template";
@@ -29,6 +30,7 @@ interface Order {
   cashier: { firstName: string; lastName: string } | null;
   barista: { firstName: string; lastName: string } | null;
   courier: { firstName: string; lastName: string } | null;
+  discountTotal?: string; // Added discount field
 }
 
 interface OrderEditData {
@@ -36,9 +38,13 @@ interface OrderEditData {
   customerPhone?: string;
   status?: string;
   notes?: string;
+  subtotal?: string;
+  total?: string;
+  discountTotal?: string;
 }
 
 export function EnhancedOrderManagement() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,27 +52,46 @@ export function EnhancedOrderManagement() {
   const [dateFilter, setDateFilter] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // State for editing items
   const [editForm, setEditForm] = useState<OrderEditData>({
     customerName: "",
     customerPhone: "",
     status: ""
   });
-  const [viewingInvoice, setViewingInvoice] = useState<any>(null); // State for invoice preview
+  const [editItems, setEditItems] = useState<any[]>([]);
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemId, setNewItemId] = useState<string>("");
+
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
   const { createInvoiceFromOrder } = useInvoiceGenerator();
 
-  // Company info for invoices (TODO: Move to settings)
+  // Fetch receipt settings (Moved up to avoid ReferenceError)
+  const { data: receiptSettings } = useQuery<any>({
+    queryKey: ['/api/settings/receipt'],
+  });
+
+  // Company info for invoices (using receipt settings or defaults)
   const companyInfo = {
-    name: "Heavy's Retail",
-    address: "123 Business Rd, Commerce City",
-    phone: "+1 (555) 123-4567",
-    email: "billing@heavys.com",
-    taxId: "TAX-12345678"
+    name: receiptSettings?.businessName || "Heavy's Retail",
+    address: receiptSettings?.address || "123 Business Rd, Commerce City",
+    phone: receiptSettings?.phoneNumber || "+1 (555) 123-4567",
+    email: receiptSettings?.email || "billing@heavys.com",
+    taxId: receiptSettings?.taxId || "TAX-12345678"
   };
 
   // Fetch orders
   const { data: allOrders = [], isLoading, refetch } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
   });
+
+  // Fetch products for adding items
+  const { data: products = [] } = useQuery<any[]>({
+    queryKey: ["/api/products"],
+    enabled: !!editingOrder // Only fetch when editing
+  });
+
+
 
   // Smart filtering logic
   const filteredOrders = useMemo(() => {
@@ -93,7 +118,7 @@ export function EnhancedOrderManagement() {
         order.orderNumber?.toString().includes(searchLower) ||
         order.customerName?.toLowerCase().includes(searchLower) ||
         order.customerPhone?.toLowerCase().includes(searchLower) ||
-        order.customerAddress?.toLowerCase().includes(searchLower) || // Added customerAddress to search
+        order.customerAddress?.toLowerCase().includes(searchLower) ||
         order.id.toLowerCase().includes(searchLower)
       );
     }
@@ -104,6 +129,10 @@ export function EnhancedOrderManagement() {
   const deleteOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
       const res = await apiRequest("DELETE", `/api/orders/${orderId}`, null);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete order");
+      }
       return res.json();
     },
     onSuccess: (_, orderId) => {
@@ -122,9 +151,18 @@ export function EnhancedOrderManagement() {
     },
   });
 
+  // Enhanced mutation to handle items update
   const updateOrderMutation = useMutation({
-    mutationFn: async ({ orderId, data }: { orderId: string; data: OrderEditData }) => {
-      const res = await apiRequest("PATCH", `/api/orders/${orderId}`, data);
+    mutationFn: async ({ orderId, data, items }: { orderId: string; data: OrderEditData, items?: any[] }) => {
+      // Use PUT for full update with items, PATCH for partial
+      const method = items ? "PUT" : "PATCH";
+      const payload = items ? { order: data, items } : data;
+
+      const res = await apiRequest(method, `/api/orders/${orderId}`, payload);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update order");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -133,7 +171,8 @@ export function EnhancedOrderManagement() {
         description: "Order details have been successfully updated",
       });
       setEditingOrder(null);
-      setEditForm({ customerName: "", customerPhone: "", status: "" }); // Reset form
+      setEditForm({ customerName: "", customerPhone: "", status: "" });
+      setEditItems([]);
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
     },
     onError: (error: any) => {
@@ -158,46 +197,105 @@ export function EnhancedOrderManagement() {
   };
 
   const canDeleteOrder = (order: Order) => {
-    // Only allow deletion of pending or cancelled orders to prevent data integrity issues
+    if (user?.role === 'admin') return true;
     return ['pending', 'cancelled'].includes(order.status);
   };
 
   const canEditOrder = (order: Order) => {
-    // Allow editing of non-delivered orders
+    // Admin override: can edit ANY order
+    if (user?.role === 'admin') return true;
+    // Standard rule: can only edit non-delivered
     return !['delivered'].includes(order.status);
   };
 
-  const handleEditOrder = (order: Order) => {
-    setEditingOrder(order);
-    setEditForm({
-      customerName: order.customerName,
-      customerPhone: order.customerPhone || '',
-      status: order.status,
+  const handleEditOrder = async (order: Order) => {
+    try {
+      // 1. Fetch full order details including items
+      const res = await apiRequest('GET', `/api/orders/${order.id}`);
+      if (!res.ok) throw new Error("Failed to fetch order details");
+      const fullOrder = await res.json();
+
+      setEditingOrder(fullOrder); // Use full order
+
+      setEditForm({
+        customerName: fullOrder.customerName,
+        customerPhone: fullOrder.customerPhone || '',
+        status: fullOrder.status,
+      });
+
+      // Map items for editing
+      const mappedItems = (fullOrder.items || []).map((item: any) => ({
+        ...item,
+        // Ensure numeric values for inputs
+        price: item.priceAtOrder || item.unitPrice || item.product?.price || 0,
+        quantity: item.quantity
+      }));
+      setEditItems(mappedItems);
+
+    } catch (error) {
+      console.error("Error fetching order for edit:", error);
+      toast({
+        title: "Error",
+        description: "Could not load order details for editing",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Helper to calculate editing total
+  const editingTotal = editItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+
+  const handleAddItem = () => {
+    if (!newItemId) return;
+    const product = products.find(p => p.id === newItemId);
+    if (!product) return;
+
+    setEditItems(prev => [
+      ...prev,
+      {
+        productId: product.id,
+        name: product.name,
+        quantity: 1,
+        price: product.price,
+        total: product.price, // Initial total
+        product: product // Keep reference for display
+      }
+    ]);
+    setNewItemId("");
+    setIsAddingItem(false);
+  };
+
+  const handleUpdateItem = (index: number, field: string, value: any) => {
+    setEditItems(prev => {
+      const newItems = [...prev];
+      newItems[index] = { ...newItems[index], [field]: value };
+      return newItems;
     });
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setEditItems(prev => prev.filter((_, i) => i !== index));
   };
 
 
   const handlePrintOrder = async (orderId: string) => {
     try {
-      // 1. Fetch full order details (to get items)
       console.log('Fetching full order details for print...');
       const res = await apiRequest('GET', `/api/orders/${orderId}`);
       const fullOrder = await res.json();
 
-      // 2. Format for printer
       const receiptData = {
-        storeName: "HIGHWAY CAFE",
+        storeName: receiptSettings?.businessName || "HIGHWAY CAFE",
         orderId: fullOrder.orderNumber ? fullOrder.orderNumber.toString() : fullOrder.id.substring(0, 8),
         items: fullOrder.items.map((item: any) => ({
           name: item.product?.name || "Unknown Item",
           quantity: item.quantity,
-          total: Number(item.priceAtOrder) * item.quantity // Calculate line total
+          total: (item.priceAtOrder ? Number(item.priceAtOrder) : (item.product?.price ? Number(item.product.price) : 0)) * item.quantity
         })),
-        subtotal: Number(fullOrder.subtotal || fullOrder.total), // Fallback
+        subtotal: Number(fullOrder.subtotal || fullOrder.total),
         total: Number(fullOrder.total),
         paymentMethod: fullOrder.paymentMethod || "CASH",
         timestamp: fullOrder.createdAt,
-        // Optional customer info
         phone: fullOrder.customerPhone,
         address: fullOrder.customerAddress
       };
@@ -209,7 +307,6 @@ export function EnhancedOrderManagement() {
       });
 
       await printReceipt(receiptData);
-
       toast({
         title: "Print Sent",
         description: "Receipt sent to printer successfully.",
@@ -231,13 +328,12 @@ export function EnhancedOrderManagement() {
       const res = await apiRequest('GET', `/api/orders/${orderId}`);
       const fullOrder = await res.json();
 
-      // Ensure items have necessary structure for invoice
       const orderWithMappedItems = {
         ...fullOrder,
         items: fullOrder.items.map((item: any) => ({
           name: item.product?.name || "Unknown Item",
           quantity: item.quantity,
-          price: item.priceAtOrder, // map priceAtOrder to price for generator
+          price: item.unitPrice ? Number(item.unitPrice) : (item.priceAtOrder ? Number(item.priceAtOrder) : (item.product?.price ? Number(item.product.price) : 0)),
           sku: item.product?.sku
         }))
       };
@@ -250,11 +346,7 @@ export function EnhancedOrderManagement() {
 
       setViewingInvoice(invoiceData);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to generate invoice: " + error.message,
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Failed to generate invoice: " + error.message, variant: "destructive" });
     }
   };
 
@@ -277,7 +369,6 @@ export function EnhancedOrderManagement() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Filters and Search */}
           <div className="flex flex-wrap items-end space-x-4 mb-6 gap-4">
             <div className="flex-1 min-w-[200px]">
               <Label htmlFor="search">Search Orders</Label>
@@ -285,7 +376,7 @@ export function EnhancedOrderManagement() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
                   id="search"
-                  placeholder="Search by order #, customer name, phone, address..."
+                  placeholder="Search by order #, customer name, phone..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -314,34 +405,25 @@ export function EnhancedOrderManagement() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="preparing">Preparing</SelectItem>
                   <SelectItem value="ready">Ready</SelectItem>
+                  <SelectItem value="delivering">Delivering</SelectItem>
                   <SelectItem value="delivered">Delivered</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem> {/* Added cancelled to filter */}
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="w-48">
               <Label htmlFor="date-filter">Filter by Date</Label>
-              <Input
-                id="date-filter"
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-              />
+              <Input id="date-filter" type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
             </div>
 
             <Button onClick={() => refetch()} variant="outline">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+              <RefreshCw className="h-4 w-4 mr-2" /> Refresh
             </Button>
 
             {(searchTerm || statusFilter !== "all" || dateFilter) && (
               <Button
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('all');
-                  setDateFilter('');
-                }}
+                onClick={() => { setSearchTerm(''); setStatusFilter('all'); setDateFilter(''); }}
                 variant="outline"
                 className="text-red-600"
               >
@@ -350,22 +432,12 @@ export function EnhancedOrderManagement() {
             )}
           </div>
 
-          {/* Results summary */}
           <div className="mb-4">
             <Badge variant="outline" className="mb-2">
               Showing {filteredOrders.length} of {allOrders.length} orders
             </Badge>
-            {(searchTerm || statusFilter !== "all" || dateFilter) && (
-              <div className="text-sm text-muted-foreground">
-                Filters applied:
-                {searchTerm && <span className="ml-1 font-medium">Search: "{searchTerm}"</span>}
-                {statusFilter !== "all" && <span className="ml-1 font-medium">Status: {statusFilter}</span>}
-                {dateFilter && <span className="ml-1 font-medium">Date: {new Date(dateFilter).toLocaleDateString()}</span>}
-              </div>
-            )}
           </div>
 
-          {/* Orders Table */}
           {filteredOrders.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -380,6 +452,8 @@ export function EnhancedOrderManagement() {
                   <TableHead>Phone</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Total</TableHead>
+                  <TableHead>Discount</TableHead>
+                  <TableHead>Net Total</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Staff</TableHead>
                   <TableHead>Actions</TableHead>
@@ -392,22 +466,14 @@ export function EnhancedOrderManagement() {
                     <TableCell className="font-medium">{order.customerName}</TableCell>
                     <TableCell>{order.customerPhone || 'N/A'}</TableCell>
                     <TableCell>
-                      <Badge className={getStatusColor(order.status)}>
-                        {order.status}
-                      </Badge>
+                      <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                     </TableCell>
-                    <TableCell className="font-mono">${order.total}</TableCell>
+                    <TableCell className="font-mono text-muted-foreground line-through">${order.subtotal}</TableCell>
+                    <TableCell className="font-mono text-red-600">-${order.discountTotal || '0.00'}</TableCell>
+                    <TableCell className="font-mono font-bold">${order.total}</TableCell>
                     <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell className="text-sm">
-                      {order.cashier && (
-                        <div>Cashier: {order.cashier.firstName} {order.cashier.lastName}</div>
-                      )}
-                      {order.barista && (
-                        <div>Barista: {order.barista.firstName} {order.barista.lastName}</div>
-                      )}
-                      {order.courier && (
-                        <div>Courier: {order.courier.firstName} {order.courier.lastName}</div>
-                      )}
+                      {order.cashier && <div>Cashier: {order.cashier.firstName}</div>}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -421,61 +487,30 @@ export function EnhancedOrderManagement() {
                             <Edit className="h-4 w-4" />
                           </Button>
                         )}
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePrintOrder(order.id)}
-                          title="Print Receipt"
-                        >
+                        <Button variant="outline" size="sm" onClick={() => handlePrintOrder(order.id)}>
                           <Printer className="h-4 w-4" />
                         </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCreateInvoice(order.id)}
-                          title="Print A4 Invoice"
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                        >
+                        <Button variant="outline" size="sm" onClick={() => handleCreateInvoice(order.id)}>
                           <FileText className="h-4 w-4" />
                         </Button>
-
                         {canDeleteOrder(order) && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                data-testid={`button-delete-${order.id}`}
-                              >
+                              <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle className="flex items-center gap-2">
-                                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                                  Delete Order #{order.orderNumber}
-                                </AlertDialogTitle>
+                                <AlertDialogTitle>Delete Order #{order.orderNumber}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete this order? This action cannot be undone.
-                                  <div className="mt-2 p-3 bg-gray-50 rounded">
-                                    <p><strong>Customer:</strong> {order.customerName}</p>
-                                    <p><strong>Total:</strong> ${order.total}</p>
-                                    <p><strong>Status:</strong> {order.status}</p>
-                                  </div>
+                                  Are you sure? This cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteOrderMutation.mutate(order.id)}
-                                  className="bg-red-600 hover:bg-red-700"
-                                  data-testid={`confirm-delete-${order.id}`}
-                                >
-                                  Delete Order
+                                <AlertDialogAction onClick={() => deleteOrderMutation.mutate(order.id)} className="bg-red-600">
+                                  Delete
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -491,67 +526,186 @@ export function EnhancedOrderManagement() {
         </CardContent>
       </Card>
 
-      {/* Edit Order Dialog */}
+      {/* Enhanced Edit Order Dialog */}
       {editingOrder && (
         <AlertDialog open={!!editingOrder} onOpenChange={() => setEditingOrder(null)}>
-          <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <AlertDialogHeader>
               <AlertDialogTitle>Edit Order #{editingOrder.orderNumber}</AlertDialogTitle>
               <AlertDialogDescription>
-                Update order details. Some fields may be restricted based on order status.
+                Modify order details and items.
+                {user?.role === 'admin' && <span className="text-red-600 block mt-1 font-bold"> Note: As Admin, changes to 'Sold' orders do not automatically adjust inventory.</span>}
               </AlertDialogDescription>
             </AlertDialogHeader>
 
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="edit-customer-name">Customer Name</Label>
-                <Input
-                  id="edit-customer-name"
-                  value={editForm.customerName || ''}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, customerName: e.target.value }))}
-                  data-testid="input-edit-customer-name"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Left Column: Metadata */}
+              <div className="space-y-4 md:col-span-1 border-r pr-4">
+                <h3 className="font-semibold text-sm text-gray-900">Order Details</h3>
+                <div>
+                  <Label>Customer Name</Label>
+                  <Input
+                    value={editForm.customerName || ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, customerName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Customer Phone</Label>
+                  <Input
+                    value={editForm.customerPhone || ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, customerPhone: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select
+                    value={editForm.status}
+                    onValueChange={(value) => setEditForm(prev => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="preparing">Preparing</SelectItem>
+                      <SelectItem value="ready">Ready</SelectItem>
+                      <SelectItem value="delivering">Delivering</SelectItem>
+                      <SelectItem value="delivered">Delivered</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div>
-                <Label htmlFor="edit-customer-phone">Customer Phone</Label>
-                <Input
-                  id="edit-customer-phone"
-                  value={editForm.customerPhone || ''}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, customerPhone: e.target.value }))}
-                  data-testid="input-edit-customer-phone"
-                />
-              </div>
+              {/* Right Column: Items */}
+              <div className="space-y-4 md:col-span-2">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-sm text-gray-900">Order Items</h3>
+                  {!isAddingItem ? (
+                    <Button size="sm" variant="outline" onClick={() => setIsAddingItem(true)}>
+                      + Add Item
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Select value={newItemId} onValueChange={setNewItemId}>
+                        <SelectTrigger className="w-[200px] h-8 text-xs">
+                          <SelectValue placeholder="Select Product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products.map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.name} (${p.price})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button size="sm" onClick={handleAddItem} disabled={!newItemId}>Add</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setIsAddingItem(false)}>Cancel</Button>
+                    </div>
+                  )}
+                </div>
 
-              <div>
-                <Label htmlFor="edit-status">Order Status</Label>
-                <Select
-                  value={editForm.status}
-                  onValueChange={(value) => setEditForm(prev => ({ ...prev, status: value }))}
-                >
-                  <SelectTrigger data-testid="select-edit-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="preparing">Preparing</SelectItem>
-                    <SelectItem value="ready">Ready</SelectItem>
-                    <SelectItem value="delivering">Delivering</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="border rounded-md overflow-hidden bg-white">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="w-[40%]">Item</TableHead>
+                        <TableHead className="w-[15%]">Qty</TableHead>
+                        <TableHead className="w-[20%]">Price</TableHead>
+                        <TableHead className="w-[15%]">Total</TableHead>
+                        <TableHead className="w-[10%]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {editItems.map((item, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium text-sm">
+                            {item.name || item.product?.name}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="1"
+                              className="h-8 w-16"
+                              value={item.quantity}
+                              onChange={(e) => handleUpdateItem(idx, 'quantity', Number(e.target.value))}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-8 w-20"
+                              value={item.price}
+                              onChange={(e) => handleUpdateItem(idx, 'price', e.target.value)}
+                            />
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            ${(Number(item.price) * Number(item.quantity)).toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-500" onClick={() => handleRemoveItem(idx)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {editItems.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-gray-500 py-4">
+                            No items in order
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2 border-t">
+                  <div className="flex justify-end gap-4 items-center">
+                    <div className="text-sm font-medium text-gray-500">Discount:</div>
+                    <div className="w-24">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="text-right h-8"
+                        value={editingOrder.discountTotal || "0"}
+                        onChange={(e) => setEditingOrder(prev => prev ? ({ ...prev, discountTotal: e.target.value }) : null)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-4 items-center">
+                    <div className="text-sm font-medium text-gray-500">New Total Estimate:</div>
+                    <div className="text-xl font-bold text-green-700">${(editingTotal - Number(editingOrder.discountTotal || 0)).toFixed(2)}</div>
+                  </div>
+                </div>
               </div>
             </div>
 
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => updateOrderMutation.mutate({
-                  orderId: editingOrder.id,
-                  data: editForm
-                })}
-                data-testid="button-save-order-changes"
+                onClick={() => {
+                  // Calculate new totals logic
+                  const newSubtotal = editItems.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+                  const currentDiscount = Number(editingOrder.discountTotal || 0);
+                  const newTotal = newSubtotal - currentDiscount;
+
+                  updateOrderMutation.mutate({
+                    orderId: editingOrder.id,
+                    data: {
+                      ...editForm,
+                      subtotal: newSubtotal.toFixed(2),
+                      total: newTotal.toFixed(2),
+                      discountTotal: currentDiscount.toFixed(2)
+                    },
+                    items: editItems.map(i => ({
+                      productId: i.productId || i.product?.id || i.product?.productId,
+                      quantity: Number(i.quantity),
+                      unitPrice: String(i.price),
+                      total: String(Number(i.price) * Number(i.quantity)),
+                      modifications: i.modifications
+                    }))
+                  })
+                }}
               >
                 Save Changes
               </AlertDialogAction>

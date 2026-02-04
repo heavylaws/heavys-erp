@@ -4,32 +4,56 @@ This document explains how to configure XPrinter POS-80 thermal receipt printers
 
 ## Overview
 
-The XPrinter POS-80 is a thermal receipt printer commonly used in POS systems. It supports ESC/POS commands and connects via USB.
+The XPrinter POS-80 is a thermal receipt printer commonly used in POS systems. It supports ESC/POS commands but has limited internal fonts.
 
 ## Hardware Information
 
 - **Manufacturer**: XPrinter
 - **Model**: POS-80 (80mm thermal printer)
-- **Connection**: USB
 - **USB Vendor ID**: `0483` (STMicroelectronics)
 - **USB Product ID**: `5743`
 - **Device Path**: `/dev/usb/lp1` (or `/dev/usb/lp0`)
 
-## Why the Standard CUPS Driver Doesn't Work
+## The Problem: Arabic Text & Driver Issues
 
-The standard XPrinter CUPS driver (`snailep-xprinter`) has issues:
+1.  **Missing Arabic Fonts**: The printer does not have built-in Arabic fonts. Sending UTF-8 Arabic text causes it to print Chinese characters (interpreting the bytes as GBK encoding).
+2.  **Driver Crashes**: The standard CUPS driver (`snailep-xprinter`) often crashes (`rastertosnailep-xprinter` segfaults), causing jobs to get stuck as "Stopped".
 
-1. **Filter crashes**: The `rastertosnailep-xprinter` filter crashes with signal 11 (segfault)
-2. **Garbage output**: The driver converts text to raster graphics, which produces garbage characters
-3. **Jobs get stuck**: Print jobs show "Stopped" status with "Filter failed" message
+## The Solution: Bitmap/Raster Printing
 
-## The Solution: Direct USB Printing with ESC/POS
+To support Arabic text reliably, we must bypass the printer's internal fonts and the faulty CUPS driver filters. We do this by rendering the receipt as an image (bitmap) on the server and sending the pixel data to the printer.
 
-Instead of using CUPS drivers, we write directly to the USB device with ESC/POS commands.
+### 1. Implementation Architecture
 
-### Step 1: Set Permanent USB Permissions
+-   **Image Rendering**: Use `canvas` (Node.js library) to draw the receipt layout, text, and styling programmatically.
+-   **Arabic Reshaping**: Use `arabic-persian-reshaper` to fix Arabic ligatures and reverse the text for correct Right-to-Left (RTL) rendering on the canvas.
+-   **Direct USB Writing**: Send the raw ESC/POS raster commands directly to the USB device file (`/dev/usb/lp1`) to avoid CUPS processing overhead/errors.
 
-Create a udev rule to allow the application to write directly to the printer:
+### 2. Dependencies
+
+Required Node.js packages:
+
+```json
+"dependencies": {
+  "canvas": "^2.11.2",
+  "arabic-persian-reshaper": "^1.0.1"
+}
+```
+
+### 3. Setup Instructions
+
+#### A. System Prerequisites
+
+The `canvas` package requires system libraries:
+
+```bash
+sudo apt-get update
+sudo apt-get install build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+```
+
+#### B. Permanent USB Permissions
+
+Create a udev rule to allow the application to write directly to the printer without root (sudo):
 
 ```bash
 # Create the udev rule
@@ -37,122 +61,47 @@ echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0483", ATTR{idProduct}=="5743", MODE="0
 
 # Reload udev rules
 sudo udevadm control --reload-rules
-
-# Also add user to lp group (requires logout/login)
-sudo usermod -aG lp $USER
 ```
 
-### Step 2: Printer Implementation
+#### C. CUPS Configuration (Fallback Only)
 
-The printer module (`server/printer.ts`) uses:
-
-1. **ESC/POS Commands**: Standard thermal printer control codes
-2. **Direct USB Writing**: Writes to `/dev/usb/lp1` for fastest, most reliable printing
-3. **Fallback to Raw Queue**: If direct USB fails, uses `lp -d Printer-POS-80-Raw`
-
-Key ESC/POS Commands used:
-```typescript
-const ESC = '\x1b';
-const GS = '\x1d';
-
-INIT: ESC + '@'              // Initialize printer
-ALIGN_CENTER: ESC + 'a\x01'  // Center alignment
-ALIGN_LEFT: ESC + 'a\x00'    // Left alignment
-BOLD_ON: ESC + 'E\x01'       // Bold text on
-BOLD_OFF: ESC + 'E\x00'      // Bold text off
-PARTIAL_CUT: GS + 'V\x01'    // Partial paper cut
-FULL_CUT: GS + 'V\x00'       // Full paper cut
-```
-
-### Step 3: CUPS Configuration (Optional Fallback)
-
-If direct USB doesn't work, you can use a Raw CUPS queue:
+We primarily write directly to `/dev/usb/lp1`. However, a "Raw" CUPS queue is useful as a fallback or for testing connection:
 
 ```bash
 # Create a raw queue (bypasses driver filters)
 lpadmin -p Printer-POS-80-Raw -E -v usb://Printer/POS-80?serial=YOUR_SERIAL -m raw
-
-# Cancel stuck jobs
-cancel -a Printer-POS-80
-
-# Re-enable printer
-cupsenable Printer-POS-80
-cupsaccept Printer-POS-80
-
-# After CUPS changes, restart CUPS
-sudo systemctl restart cups
 ```
+
+### 4. Code Example
+
+See `server/printer.ts` for the full implementation. Key logic involves:
+
+1.  **Reshaping Text**:
+    ```typescript
+    const reshaped = ArabicReshaper.convert(text);
+    const final = reshaped.split('').reverse().join(''); // For manual RTL drawing
+    ```
+
+2.  **Drawing to Canvas**:
+    ```typescript
+    const canvas = createCanvas(576, height); // 576 dots = 80mm
+    const ctx = canvas.getContext('2d');
+    ctx.fillText(final, x, y);
+    ```
+
+3.  **Raster Conversion**:
+    Scanning the canvas pixels and converting them to `GS v 0` ESC/POS commands (Monochrome).
 
 ## Troubleshooting
 
-### Printer connected but not printing
+### Printer prints gibberish/Chinese
+-   **Cause**: You are likely sending raw text instead of a bitmap.
+-   **Fix**: Ensure `renderReceiptToBuffer` is being called and the output is ESC/POS raster data.
 
-1. Check if device exists:
-   ```bash
-   ls -la /dev/usb/lp*
-   lsusb | grep -i printer
-   ```
+### Permission Denied on `/dev/usb/lp1`
+-   **Cause**: User is not in `lp` group or udev rule is missing.
+-   **Fix**: Run the udev rule command above and restart.
 
-2. Try manual ESC/POS test:
-   ```bash
-   echo -e '\x1b@Test Print\n\n\n\x1dV\x00' > /dev/usb/lp1
-   ```
-
-### Garbage characters on printout
-
-This usually means the driver is converting text to raster. Solutions:
-- Use direct USB writing (current implementation)
-- Use Raw CUPS queue instead of driver queue
-- Ensure ESC/POS INIT command (`\x1b@`) is sent first
-
-### Jobs stuck with "Filter failed"
-
-```bash
-# Check CUPS error log
-tail -100 /var/log/cups/error_log | grep -E "Job|filter|error"
-
-# Cancel all stuck jobs
-cancel -a Printer-POS-80
-
-# Restart CUPS
-sudo systemctl restart cups
-```
-
-### Permission denied on /dev/usb/lp1
-
-```bash
-# Temporary fix
-sudo chmod 666 /dev/usb/lp1
-
-# Permanent fix - create udev rule (see Step 1)
-```
-
-## Arabic Text Support
-
-For Arabic text printing:
-- The printer must support Arabic character sets
-- Use UTF-8 encoding in the print data
-- Some printers require specific code page selection commands
-- ESC/POS command for Arabic code page: `ESC t n` where n is the code page number
-
-## Files Modified
-
-- `server/printer.ts` - Main printer implementation with ESC/POS and direct USB
-- `server/routes.ts` - API endpoint `/api/print/receipt` (moved before return statement)
-- `server/vite.ts` - Fixed catch-all handler to not intercept API routes
-- `/etc/udev/rules.d/99-xprinter.rules` - Permanent USB permissions
-
-## Testing
-
-Run the test script to verify printing works:
-```bash
-npx tsx scripts/test-cashier-print.ts
-```
-
-## Service Restart
-
-After any printer configuration changes:
-```bash
-sudo systemctl restart cups
-systemctl restart heavys-erp
-```
+### "Canvas" install fails
+-   **Cause**: Missing system build tools.
+-   **Fix**: Install `libcairo2-dev` and related packages (see Prerequisites).

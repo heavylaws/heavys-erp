@@ -902,9 +902,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateOrder(id: string, order: Partial<InsertOrder>): Promise<Order> {
+    // Explicitly select allowed fields to avoid passing invalid columns
+    const updateData: any = {};
+    if (order.customerName !== undefined) updateData.customerName = order.customerName;
+    if (order.customerPhone !== undefined) updateData.customerPhone = order.customerPhone;
+    if (order.status !== undefined) updateData.status = order.status;
+    if (order.notes !== undefined) updateData.notes = order.notes;
+    // Explicitly handle Numeric fields ensuring they are Strings/Decimals
+    if (order.subtotal !== undefined) updateData.subtotal = String(order.subtotal);
+    if (order.total !== undefined) updateData.total = String(order.total);
+    if (order.discountTotal !== undefined) updateData.discountTotal = String(order.discountTotal);
+
+    // Only update if there is data
+    if (Object.keys(updateData).length === 0) {
+      // Just return current order if no fields to update
+      const [current] = await db.select().from(orders).where(eq(orders.id, id));
+      return current;
+    }
+
     const [updatedOrder] = await db
       .update(orders)
-      .set({ ...order, updatedAt: new Date() })
+      .set({ ...updateData, updatedAt: new Date() })
       .where(eq(orders.id, id))
       .returning();
     return updatedOrder;

@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -495,6 +496,20 @@ export default function CashierPOS() {
     });
   };
 
+  const updateItemPrice = (productId: string, newPrice: number) => {
+    if (isNaN(newPrice) || newPrice < 0) return;
+    updateCurrentOrder(order => {
+      const newItems = order.items.map(item => {
+        if (item.productId === productId) {
+          return { ...item, unitPrice: newPrice, total: item.quantity * newPrice };
+        }
+        return item;
+      });
+      const totals = calculateOrderTotals(newItems, order.discount);
+      return { ...order, items: newItems, ...totals };
+    });
+  };
+
   const processPayment = async (paymentMethod: string) => {
     const currentOrder = getCurrentOrder();
     if (!currentOrder || currentOrder.items.length === 0) return;
@@ -507,6 +522,7 @@ export default function CashierPOS() {
 
     const orderData = {
       subtotal: currentOrder.total.toFixed(2), // Tax-inclusive pricing
+      discountTotal: currentOrder.discount?.toFixed(2) || "0.00",
       tax: "0.00", // No separate tax line
       total: currentOrder.total.toFixed(2),
       paymentMethod,
@@ -797,7 +813,8 @@ export default function CashierPOS() {
         orderId: order.orderNumber || order.id,
         timestamp: order.createdAt || new Date(),
         items: formattedItems,
-        subtotal: parseFloat(order.total),
+        subtotal: parseFloat(order.subtotal || order.total),
+        discount: parseFloat(order.discount || 0),
         tax: 0,
         total: parseFloat(order.total),
         paymentMethod: order.paymentMethod || 'CASH',
@@ -1452,7 +1469,39 @@ export default function CashierPOS() {
 
                           {/* Unit Price */}
                           <div className="w-16 text-right text-gray-600">
-                            ${item.unitPrice.toFixed(2)}
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="ghost" className="h-auto p-0 px-1 text-gray-600 hover:text-black font-normal hover:bg-gray-200">
+                                  ${item.unitPrice.toFixed(2)}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-48">
+                                <div className="grid gap-2">
+                                  <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Edit Price</h4>
+                                    <p className="text-xs text-muted-foreground">
+                                      Set new price for this item.
+                                    </p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      defaultValue={item.unitPrice}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          updateItemPrice(item.productId, parseFloat(e.currentTarget.value));
+                                          // Manually blur to simulate submit if needed, or user clicks out
+                                          e.currentTarget.blur();
+                                          document.body.click(); // Close popover hack
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           </div>
 
                           {/* Total Price */}
