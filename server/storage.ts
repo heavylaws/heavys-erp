@@ -348,6 +348,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCategory(id: string): Promise<void> {
+    // Check for ACTIVE products only - we want to block deletion if category is in use
+    const activeProducts = await db.select().from(products).where(and(eq(products.categoryId, id), eq(products.isActive, true))).limit(1);
+
+    if (activeProducts.length > 0) {
+      throw new Error("Cannot delete category containing active products. Please remove or move them first.");
+    }
+
+    // Unlink any INACTIVE products (prevent FK violation)
+    await db.update(products)
+      .set({ categoryId: null })
+      .where(eq(products.categoryId, id));
+
+    // Now safe to delete
     await db.delete(categories).where(eq(categories.id, id));
   }
 

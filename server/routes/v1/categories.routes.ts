@@ -87,9 +87,17 @@ router.delete('/:id', isAuthenticated, async (req, res) => {
         const { id } = req.params;
         await storage.deleteCategory(id);
         res.json({ message: "Category deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
+        if (error.message.includes("Cannot delete category")) {
+            return res.status(400).json({ message: error.message });
+        }
         console.error("Error deleting category:", error);
-        res.status(500).json({ message: "Failed to delete category" });
+        res.status(500).json({
+            message: "Failed to delete category",
+            details: error.message,
+            code: (error as any).code,
+            constraint: (error as any).constraint
+        });
     }
 });
 
