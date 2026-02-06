@@ -240,11 +240,7 @@ export class ReceiptPrinter {
             y += this.lineHeight;
         }
 
-        if (receiptData.discount) {
-            const discount = this.formatCurrency(receiptData.discount);
-            this.drawTextLine(ctx, 'Discount:', `-${discount}`, y);
-            y += this.lineHeight;
-        }
+
 
         // Dividor before Total
         ctx.beginPath();
