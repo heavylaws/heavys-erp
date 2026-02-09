@@ -8,7 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Edit, Trash2, Package, Plus, Box, Settings, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Edit, Trash2, Package, Plus, Box, Settings, Search, X, CheckSquare, Square } from "lucide-react";
 import { EditProductDialog } from "@/components/edit-product-dialog";
 import { AddProductDialog } from "@/components/add-product-dialog";
 import { BundleManager } from "@/components/bundle-manager";
@@ -33,6 +37,8 @@ export function ProductManagement() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState<string>("");
 
   const { data: allProducts = [], isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
@@ -55,6 +61,26 @@ export function ProductManagement() {
       product.barcode?.toLowerCase().includes(searchLower)
     );
   }, [allProducts, searchTerm, selectedCategory]);
+
+  // Handle individual selection
+  const toggleSelection = (productId: string) => {
+    const newSelection = new Set(selectedProducts);
+    if (newSelection.has(productId)) {
+      newSelection.delete(productId);
+    } else {
+      newSelection.add(productId);
+    }
+    setSelectedProducts(newSelection);
+  };
+
+  // Handle select all
+  const toggleSelectAll = () => {
+    if (selectedProducts.size === products.length && products.length > 0) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(products.map(p => p.id)));
+    }
+  };
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
@@ -107,6 +133,29 @@ export function ProductManagement() {
         variant: "destructive",
       });
     },
+  });
+
+  const bulkUpdateCategoryMutation = useMutation({
+    mutationFn: async ({ productIds, categoryId }: { productIds: string[], categoryId: string }) => {
+      const response = await apiRequest("POST", "/api/products/batch-category", { productIds, categoryId });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({
+        title: "Batch Update Successful",
+        description: `Moved ${data.count} products to new category`,
+      });
+      setSelectedProducts(new Set());
+      setBulkCategory("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Batch Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   });
 
   const getCategoryName = (categoryId: string | null) => {
@@ -210,13 +259,60 @@ export function ProductManagement() {
         </CardContent>
       </Card>
 
+      {/* Bulk Actions Bar */}
+      {selectedProducts.size > 0 && (
+        <Card className="bg-blue-50 border-blue-200 shadow-md animate-fade-in-up">
+          <CardContent className="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="h-5 w-5 text-blue-600" />
+              <span className="font-medium text-blue-900">{selectedProducts.size} products selected</span>
+            </div>
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <Select value={bulkCategory} onValueChange={setBulkCategory}>
+                <SelectTrigger className="w-[200px] bg-white">
+                  <SelectValue placeholder="Move to Category..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={() => bulkUpdateCategoryMutation.mutate({
+                  productIds: Array.from(selectedProducts),
+                  categoryId: bulkCategory
+                })}
+                disabled={!bulkCategory || bulkUpdateCategoryMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {bulkUpdateCategoryMutation.isPending ? "Moving..." : "Move"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setSelectedProducts(new Set())}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Main Table Card */}
       <Card className="glass-card border-none shadow-xl overflow-hidden">
         <CardContent className="p-0">
           <Table>
             <TableHeader className="bg-gray-50/50">
               <TableRow className="hover:bg-transparent border-gray-100">
-                <TableHead className="w-[80px] pl-6">Image</TableHead>
+                <TableHead className="w-[40px] pl-4">
+                  <Checkbox
+                    checked={products.length > 0 && selectedProducts.size === products.length}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
+                <TableHead className="w-[80px]">Image</TableHead>
                 <TableHead>Product Details</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Type</TableHead>
@@ -228,7 +324,7 @@ export function ProductManagement() {
             <TableBody>
               {products.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-64 text-center">
+                  <TableCell colSpan={8} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center text-gray-400">
                       <Package className="h-12 w-12 mb-4 opacity-20" />
                       <p className="text-lg font-medium text-gray-500">No products found</p>
@@ -238,8 +334,14 @@ export function ProductManagement() {
                 </TableRow>
               ) : (
                 products.map((product) => (
-                  <TableRow key={product.id} className="hover:bg-slate-50/80 transition-colors border-gray-100 group">
-                    <TableCell className="pl-6">
+                  <TableRow key={product.id} className={`hover:bg-slate-50/80 transition-colors border-gray-100 group ${selectedProducts.has(product.id) ? 'bg-blue-50/50' : ''}`}>
+                    <TableCell className="pl-4">
+                      <Checkbox
+                        checked={selectedProducts.has(product.id)}
+                        onCheckedChange={() => toggleSelection(product.id)}
+                      />
+                    </TableCell>
+                    <TableCell>
                       <div className="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 border border-gray-200 shadow-sm overflow-hidden">
                         {product.imageUrl ? (
                           <img

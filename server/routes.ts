@@ -212,6 +212,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   });
 
+  // Move category routes here to ensure priority over ERP routes
+  app.put('/api/categories/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.session.user;
+      if (!user || !['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+
+      const { id } = req.params;
+      const parsed = insertCategorySchema.partial().safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Invalid category update payload",
+          errors: parsed.error.flatten()
+        });
+      }
+
+      // Add updatedAt timestamp
+      const category = await storage.updateCategory(id, {
+        ...parsed.data,
+        updatedAt: new Date()
+      } as any);
+
+      res.json(category);
+    } catch (error) {
+      console.error("Error updating category:", error);
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+
+  // Batch update products category
+  app.post('/api/products/batch-category', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.session.user;
+      if (!user || !['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Insufficient permissions" });
+      }
+
+      const { productIds, categoryId } = req.body;
+
+      if (!Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({ message: "No products selected" });
+      }
+
+      // Verify category exists if not null (null means uncategorized)
+      if (categoryId) {
+        const categories = await storage.getCategories();
+        const categoryExists = categories.some(c => c.id === categoryId);
+        if (!categoryExists) {
+          return res.status(404).json({ message: "Target category not found" });
+        }
+      }
+
+      // Update in parallel or transaction? 
+      // Storage doesn't have a batch update, so we'll loop for now.
+      // Ideally we should add a batch update method to storage but loop is fine for < 100 items.
+      const results = await Promise.all(
+        productIds.map(id => storage.updateProduct(id, { categoryId }))
+      );
+
+      res.json({
+        message: `Successfully moved ${results.length} products`,
+        count: results.length
+      });
+    } catch (error) {
+      console.error("Error batch updating product categories:", error);
+      res.status(500).json({ message: "Failed to update product categories" });
+    }
+  });
+
   // ERP Module Routes (Suppliers, Customers, Purchase Orders, Serial Numbers)
   app.use('/api', erpRoutes);
 
@@ -991,6 +1062,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to create category" });
     }
   });
+
+
 
   app.delete('/api/categories/:id', isAuthenticated, async (req: any, res) => {
     try {
