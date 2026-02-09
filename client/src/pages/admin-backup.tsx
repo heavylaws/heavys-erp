@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Trash2, Download, RotateCcw, Save, AlertTriangle, Cloud, UploadCloud, Check, RefreshCw } from "lucide-react";
+import { Loader2, Trash2, Download, RotateCcw, Save, AlertTriangle, Cloud, UploadCloud, Check, RefreshCw, FolderOpen, Clock, Image as ImageIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,8 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Separator } from "@/components/ui/separator";
 
 interface BackupFile {
     name: string;
@@ -34,6 +35,8 @@ interface BackupFile {
 interface BackupConfig {
     autoBackupEnabled: boolean;
     schedule: string;
+    localBackupPath?: string;
+    includeUploads: boolean;
     hasServiceAccount: boolean;
     lastCloudBackup?: string;
     driveFolderId?: string;
@@ -43,6 +46,10 @@ export function AdminBackupPage() {
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const [uploadingKey, setUploadingKey] = useState(false);
+
+    // Local state for form inputs to avoid jumpy UI on every keystroke
+    const [localPath, setLocalPath] = useState("");
+    const [scheduleTime, setScheduleTime] = useState("");
 
     const { data: backups, isLoading } = useQuery<BackupFile[]>({
         queryKey: ['/api/admin/backups'],
@@ -62,13 +69,21 @@ export function AdminBackupPage() {
         }
     });
 
+    // innovative: Sync local state when config loads
+    useEffect(() => {
+        if (config) {
+            setLocalPath(config.localBackupPath || "");
+            setScheduleTime(config.schedule || "02:00");
+        }
+    }, [config]);
+
     const createBackupMutation = useMutation({
         mutationFn: async () => {
             await apiRequest('POST', '/api/admin/backups', {});
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['/api/admin/backups'] });
-            toast({ title: "Backup created", description: "Database has been backed up successfully." });
+            toast({ title: "Backup created", description: "System has been backed up successfully." });
         },
         onError: (error: any) => {
             toast({ title: "Backup failed", description: error.message, variant: "destructive" });
@@ -101,6 +116,16 @@ export function AdminBackupPage() {
         onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
     });
 
+    const handleBlurUpdate = () => {
+        if (!config) return;
+        if (localPath !== config.localBackupPath || scheduleTime !== config.schedule) {
+            updateConfigMutation.mutate({
+                localBackupPath: localPath,
+                schedule: scheduleTime
+            });
+        }
+    };
+
     const testConnectionMutation = useMutation({
         mutationFn: async () => {
             const res = await apiRequest('POST', '/api/admin/backup/test-drive', {});
@@ -132,7 +157,6 @@ export function AdminBackupPage() {
             toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
         } finally {
             setUploadingKey(false);
-            // Reset input
             e.target.value = '';
         }
     };
@@ -155,7 +179,7 @@ export function AdminBackupPage() {
             await apiRequest('POST', `/api/admin/backups/${filename}/restore`, {});
         },
         onSuccess: () => {
-            toast({ title: "Restore successful", description: "Database restored. You may need to refresh the page." });
+            toast({ title: "Restore successful", description: "System restored. You may need to refresh the page." });
             setTimeout(() => window.location.reload(), 1500);
         },
         onError: (error: any) => {
@@ -172,223 +196,271 @@ export function AdminBackupPage() {
     };
 
     return (
-        <div className="container mx-auto py-8 space-y-8">
+        <div className="container mx-auto py-8 space-y-8 max-w-5xl">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">System Backups</h1>
                     <p className="text-muted-foreground mt-1">
-                        Manage database backups and cloud synchronization.
+                        Configure local paths, schedules, and cloud synchronization.
                     </p>
                 </div>
                 <Button
                     onClick={() => createBackupMutation.mutate()}
                     disabled={createBackupMutation.isPending}
+                    className="gap-2"
                 >
                     {createBackupMutation.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                        <Save className="mr-2 h-4 w-4" />
+                        <Save className="h-4 w-4" />
                     )}
-                    Create Manual Backup
+                    Backup Now
                 </Button>
             </div>
 
-            {/* Cloud Backup Configuration */}
-            <Card>
-                <CardHeader>
-                    <div className="flex items-center gap-2">
-                        <Cloud className="h-5 w-5 text-sky-600" />
-                        <CardTitle>Google Drive Auto-Backup</CardTitle>
-                    </div>
-                    <CardDescription>
-                        Configure automated daily backups to Google Drive.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Status & Toggle */}
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">Auto-Backup Enabled</Label>
-                                    <div className="text-sm text-muted-foreground">
-                                        Backs up daily at {config?.schedule}
-                                    </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column: Settings */}
+                <div className="lg:col-span-2 space-y-8">
+                    {/* General Settings */}
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <Clock className="h-5 w-5 text-primary" />
+                                <CardTitle>Backup Schedule & Location</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Configure where and when backups are saved locally.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Local Path */}
+                                <div className="space-y-2 md:col-span-2">
+                                    <Label htmlFor="localPath" className="flex items-center gap-2">
+                                        <FolderOpen className="h-4 w-4" />
+                                        Local Backup Folder Path
+                                    </Label>
+                                    <Input
+                                        id="localPath"
+                                        placeholder="/home/user/Google Drive/HeavysBackups"
+                                        value={localPath}
+                                        onChange={(e) => setLocalPath(e.target.value)}
+                                        onBlur={handleBlurUpdate}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Enter the absolute path to your Google Drive or Dropbox folder to enable auto-sync.
+                                        Leave empty to use the default internal folder.
+                                    </p>
                                 </div>
-                                <Switch
-                                    checked={config?.autoBackupEnabled || false}
-                                    onCheckedChange={(checked) => updateConfigMutation.mutate({ autoBackupEnabled: checked })}
-                                    disabled={!config?.hasServiceAccount || updateConfigMutation.isPending}
-                                />
+
+                                {/* Schedule Time */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="scheduleTime" className="flex items-center gap-2">
+                                        <Clock className="h-4 w-4" />
+                                        Daily Backup Time
+                                    </Label>
+                                    <Input
+                                        id="scheduleTime"
+                                        type="time"
+                                        value={scheduleTime}
+                                        onChange={(e) => setScheduleTime(e.target.value)}
+                                        onBlur={handleBlurUpdate}
+                                    />
+                                </div>
+
+                                {/* Auto Backup Toggle */}
+                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
+                                    <div className="space-y-0.5">
+                                        <Label className="text-base">Automatic Backup</Label>
+                                        <p className="text-xs text-muted-foreground">Runs daily at specified time</p>
+                                    </div>
+                                    <Switch
+                                        checked={config?.autoBackupEnabled || false}
+                                        onCheckedChange={(checked) => updateConfigMutation.mutate({ autoBackupEnabled: checked })}
+                                    />
+                                </div>
                             </div>
 
+                            <Separator />
+
+                            {/* Content Settings */}
+                            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base flex items-center gap-2">
+                                        <ImageIcon className="h-4 w-4" />
+                                        Include Uploads & Images
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Include product images and receipts in the backup zip
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={config?.includeUploads || false}
+                                    onCheckedChange={(checked) => updateConfigMutation.mutate({ includeUploads: checked })}
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Available Backups List */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Backup History</CardTitle>
+                            <CardDescription>
+                                List of recent backups stored on the server.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {isLoading ? (
+                                <div className="flex justify-center p-8">
+                                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : !backups?.length ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    No backups found.
+                                </div>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Filename</TableHead>
+                                            <TableHead>Size</TableHead>
+                                            <TableHead>Created At</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {backups.map((file) => (
+                                            <TableRow key={file.name}>
+                                                <TableCell className="font-mono text-sm max-w-[200px] truncate" title={file.name}>{file.name}</TableCell>
+                                                <TableCell>{formatSize(file.size)}</TableCell>
+                                                <TableCell className="text-nowrap">{format(new Date(file.created_at), 'MMM d, HH:mm')}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-1">
+                                                        <Button variant="ghost" size="icon" asChild title="Download">
+                                                            <a href={`/api/admin/backups/${file.name}`} download>
+                                                                <Download className="h-4 w-4" />
+                                                            </a>
+                                                        </Button>
+
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild>
+                                                                <Button variant="ghost" size="icon" className="text-amber-600 hover:text-amber-700 hover:bg-amber-50" title="Restore">
+                                                                    <RotateCcw className="h-4 w-4" />
+                                                                </Button>
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                                                                        <AlertTriangle className="h-5 w-5" />
+                                                                        Confirm Restore
+                                                                    </AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        Are you sure you want to restore from <strong>{file.name}</strong>?
+                                                                        <br /><br />
+                                                                        This will <strong>OVERWRITE</strong> the current database.
+                                                                        <br />
+                                                                        This action cannot be undone.
+                                                                    </AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction
+                                                                        onClick={() => restoreMutation.mutate(file.name)}
+                                                                        className="bg-destructive hover:bg-destructive/90"
+                                                                    >
+                                                                        Restore Database
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild>
+                                                                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Delete">
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>Delete Backup</AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        Permanently delete <strong>{file.name}</strong>?
+                                                                    </AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction
+                                                                        onClick={() => deleteMutation.mutate(file.name)}
+                                                                        className="bg-destructive hover:bg-destructive/90"
+                                                                    >
+                                                                        Delete
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Right Column: Advanced / Legacy */}
+                <div className="space-y-6">
+                    <Card className="bg-muted/10 border-dashed">
+                        <CardHeader>
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Cloud className="h-4 w-4" />
+                                <CardTitle className="text-base">Legacy Cloud Sync</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Use Service Account (optional)
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <span className="font-medium">Status:</span>
                                 {config?.hasServiceAccount ? (
                                     <Badge variant="outline" className="text-green-600 bg-green-50 border-green-200 gap-1">
-                                        <Check className="h-3 w-3" /> Service Account Configured
+                                        <Check className="h-3 w-3" /> Configured
                                     </Badge>
                                 ) : (
-                                    <Badge variant="outline" className="text-amber-600 bg-amber-50 border-amber-200">
-                                        No Service Account
-                                    </Badge>
+                                    <Badge variant="outline">Not Configured</Badge>
                                 )}
                             </div>
-                        </div>
 
-                        {/* Actions */}
-                        <div className="space-y-4">
                             <div>
-                                <Label htmlFor="key-upload">Update Service Account Key (JSON)</Label>
-                                <div className="flex gap-2 mt-1.5">
+                                <Label htmlFor="key-upload" className="text-xs">Update Key (JSON)</Label>
+                                <div className="flex gap-2 mt-1">
                                     <Input
                                         id="key-upload"
                                         type="file"
                                         accept=".json"
                                         onChange={handleKeyUpload}
                                         disabled={uploadingKey}
-                                        className="cursor-pointer"
+                                        className="h-9 text-xs"
                                     />
-                                    {uploadingKey && <Loader2 className="h-9 w-9 animate-spin text-muted-foreground" />}
                                 </div>
                             </div>
 
-                            <div className="flex gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => testConnectionMutation.mutate()}
-                                    disabled={!config?.hasServiceAccount || testConnectionMutation.isPending}
-                                >
-                                    {testConnectionMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <RefreshCw className="h-3 w-3 mr-2" />}
-                                    Test Connection
-                                </Button>
-
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => triggerCloudMutation.mutate()}
-                                    disabled={!config?.hasServiceAccount || triggerCloudMutation.isPending}
-                                >
-                                    {triggerCloudMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <UploadCloud className="h-3 w-3 mr-2" />}
-                                    Trigger Cloud Backup
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Available Backups</CardTitle>
-                    <CardDescription>
-                        List of all manual and automatic backups stored on the server.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="flex justify-center p-8">
-                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : !backups?.length ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            No backups found. Create one to get started.
-                        </div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Filename</TableHead>
-                                    <TableHead>Size</TableHead>
-                                    <TableHead>Created At</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {backups.map((file) => (
-                                    <TableRow key={file.name}>
-                                        <TableCell className="font-mono text-sm">{file.name}</TableCell>
-                                        <TableCell>{formatSize(file.size)}</TableCell>
-                                        <TableCell>{format(new Date(file.created_at), 'PPP pp')}</TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    asChild
-                                                >
-                                                    <a href={`/api/admin/backups/${file.name}`} download>
-                                                        <Download className="h-4 w-4" />
-                                                    </a>
-                                                </Button>
-
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button variant="outline" size="sm" className="text-amber-600 hover:text-amber-700">
-                                                            <RotateCcw className="h-4 w-4" />
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-                                                                <AlertTriangle className="h-5 w-5" />
-                                                                Confirm Restore
-                                                            </AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                Are you sure you want to restore from <strong>{file.name}</strong>?
-                                                                <br /><br />
-                                                                This will <strong>OVERWRITE</strong> the current database. All data created after this backup will be lost.
-                                                                <br />
-                                                                This action cannot be undone.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                onClick={() => restoreMutation.mutate(file.name)}
-                                                                className="bg-destructive hover:bg-destructive/90"
-                                                            >
-                                                                Restore Database
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Delete Backup</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                Are you sure you want to delete <strong>{file.name}</strong>?
-                                                                This action cannot be undone.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                onClick={() => deleteMutation.mutate(file.name)}
-                                                                className="bg-destructive hover:bg-destructive/90"
-                                                            >
-                                                                Delete
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => testConnectionMutation.mutate()}
+                                disabled={!config?.hasServiceAccount || testConnectionMutation.isPending}
+                            >
+                                Test Connection
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
         </div>
     );
 }

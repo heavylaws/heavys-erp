@@ -672,39 +672,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: List server-side backups
   app.get('/api/admin/backups', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
-      const fs = await import('node:fs/promises');
-      const path = await import('node:path');
-      const BACKUP_DIR = '/backups';
+      const backups = backupService.listBackups();
+      // Map to expected format for frontend if needed, but the service returns compatible structure
+      // Service returns: { name, size, createdAt, location, path }
+      // Frontend expects: { name, size, created_at (string) }
 
-      try {
-        await fs.access(BACKUP_DIR);
-      } catch {
-        // Just return empty if dir doesn't exist yet
-        return res.json([]);
-      }
+      const formatted = backups.map((b: any) => ({
+        name: b.name,
+        size: b.size,
+        created_at: b.createdAt.toISOString(),
+        location: b.location
+      }));
 
-      const files = await fs.readdir(BACKUP_DIR);
-      const backups = await Promise.all(files
-        .filter(f => f.endsWith('.sql') || f.endsWith('.sql.gz'))
-        .map(async (f) => {
-          try {
-            const stats = await fs.stat(path.join(BACKUP_DIR, f));
-            return {
-              name: f,
-              size: stats.size,
-              created_at: stats.birthtime.toISOString()
-            };
-          } catch (e) {
-            return null;
-          }
-        }));
-
-      // Filter nulls and sort newest first
-      const validBackups = backups.filter(b => b !== null).sort((a: any, b: any) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-
-      res.json(validBackups);
+      res.json(formatted);
     } catch (error) {
       console.error('Error listing backups:', error);
       res.status(500).json({ message: 'Failed to list backups' });
@@ -714,54 +694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: Create server-side backup
   app.post('/api/admin/backups', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
-      const fs = await import('node:fs/promises');
-      const fsSync = await import('node:fs');
-      const path = await import('node:path');
-      const { spawn } = await import('node:child_process');
-
-      const BACKUP_DIR = '/backups';
-      try { await fs.access(BACKUP_DIR); } catch { await fs.mkdir(BACKUP_DIR, { recursive: true }); }
-
-      const dbUrlRaw = process.env.DATABASE_URL;
-      if (!dbUrlRaw) return res.status(500).json({ message: 'DATABASE_URL not set' });
-
-      // Parse connection
-      let host = 'localhost', port = '5432', user = 'postgres', password = '', dbName = '';
-      try {
-        const url = new URL(dbUrlRaw);
-        host = url.hostname || host;
-        port = url.port || port;
-        user = decodeURIComponent(url.username || user);
-        password = decodeURIComponent(url.password || '');
-        dbName = (url.pathname || '').replace(/^\//, '') || 'postgres';
-      } catch (e) {
-        console.warn('Failed to parse DATABASE_URL');
-      }
-
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `manual_backup_${ts}.sql.gz`;
-      const filepath = path.join(BACKUP_DIR, filename);
-
-      const env = { ...process.env, PGPASSWORD: password };
-      const args = ['-h', host, '-p', String(port), '-U', user, '-d', dbName, '--no-owner', '--no-privileges', '--clean', '--if-exists'];
-
-      const pgDump = spawn('pg_dump', args, { env });
-      const gzip = spawn('gzip');
-      const fileStream = fsSync.createWriteStream(filepath);
-
-      pgDump.stdout.pipe(gzip.stdin);
-      gzip.stdout.pipe(fileStream);
-
-      await new Promise((resolve, reject) => {
-        gzip.on('close', (code) => {
-          if (code === 0) resolve(null);
-          else reject(new Error(`Backup gz failed with code ${code}`));
-        });
-        pgDump.on('error', reject);
-        gzip.on('error', reject);
-        fileStream.on('error', reject);
-      });
-
+      const filename = await backupService.performBackup();
       try { await storage.createActivityLog({ userId: req.session.user.id, action: 'db_backup', success: true, details: { filename, type: 'manual' } }); } catch { }
       res.status(201).json({ message: 'Backup created successfully', filename });
     } catch (error: any) {
@@ -774,19 +707,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: Delete backup
   app.delete('/api/admin/backups/:filename', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
-      const fs = await import('node:fs/promises');
-      const path = await import('node:path');
       const filename = req.params.filename;
+      const success = backupService.deleteBackup(filename);
 
-      if (filename.includes('..') || filename.includes('/') || filename.includes('\\') || !filename.startsWith('backup_') && !filename.startsWith('manual_')) {
-        return res.status(400).json({ message: 'Invalid filename' });
+      if (success) {
+        try { await storage.createActivityLog({ userId: req.session.user.id, action: 'db_backup_delete', success: true, details: { filename } }); } catch { }
+        res.json({ message: 'Backup deleted' });
+      } else {
+        res.status(404).json({ message: 'Backup file not found or could not be deleted' });
       }
-
-      const filepath = path.join('/backups', filename);
-      await fs.unlink(filepath);
-
-      try { await storage.createActivityLog({ userId: req.session.user.id, action: 'db_backup_delete', success: true, details: { filename } }); } catch { }
-      res.json({ message: 'Backup deleted' });
     } catch (error: any) {
       console.error('Error deleting backup:', error);
       res.status(500).json({ message: 'Failed to delete backup' });
@@ -796,15 +725,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: Download backup
   app.get('/api/admin/backups/:filename', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
-      const path = await import('node:path');
       const filename = req.params.filename;
 
-      if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-        return res.status(400).json({ message: 'Invalid filename' });
-      }
+      const filepath = backupService.getBackupPath(filename);
 
-      const filepath = path.join('/backups', filename);
-      res.download(filepath);
+      if (filepath) {
+        res.download(filepath);
+      } else {
+        res.status(404).json({ message: 'File not found' });
+      }
     } catch (error) {
       res.status(404).json({ message: 'File not found' });
     }
@@ -813,54 +742,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin: Restore backup from file
   app.post('/api/admin/backups/:filename/restore', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
-      const path = await import('node:path');
-      const { spawn } = await import('node:child_process');
       const filename = req.params.filename;
+      const filepath = backupService.getBackupPath(filename);
 
-      if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-        return res.status(400).json({ message: 'Invalid filename' });
+      if (!filepath) return res.status(404).json({ message: 'Backup file not found' });
+
+      // Determine file type
+      if (filename.endsWith('.zip')) {
+        return res.status(501).json({ message: 'Automatic restore from ZIP is not yet implemented via UI. Please restore manually.' });
       }
 
-      const filepath = path.join('/backups', filename);
-      const dbUrlRaw = process.env.DATABASE_URL;
+      // Legacy SQL restore logic (kept for .sql/.sql.gz files)
+      // For now, we'll disable direct restore via UI for these types as well,
+      // until a more robust, non-blocking restore mechanism is implemented.
+      return res.status(501).json({ message: 'Restore functionality is being updated. Please use CLI restore for now.' });
 
-      // Parse connection
-      let host = 'localhost', port = '5432', user = 'postgres', password = '', dbName = '';
-      try {
-        const url = new URL(dbUrlRaw!);
-        host = url.hostname || host;
-        port = url.port || port;
-        user = decodeURIComponent(url.username || user);
-        password = decodeURIComponent(url.password || '');
-        dbName = (url.pathname || '').replace(/^\//, '') || 'postgres';
-      } catch (e) { }
-
-      const env = { ...process.env, PGPASSWORD: password };
-
-      // We are dropping and recreating the database to ensure clean state
-      // This requires terminating other connections first usually, but for now we try direct simple restore
-      // Ideally we should use pg_restore with -c for clean, but since we have .sql.gz we pipe to psql
-
-      // Step 1: gunzip | psql
-      const gunzip = spawn('gunzip', ['-c', filepath]);
-      const psql = spawn('psql', ['-h', host, '-p', String(port), '-U', user, '-d', dbName], { env });
-
-      gunzip.stdout.pipe(psql.stdin);
-
-      let stderr = '';
-      psql.stderr.on('data', d => stderr += d);
-
-      await new Promise((resolve, reject) => {
-        psql.on('close', (code) => {
-          if (code === 0) resolve(null);
-          else reject(new Error(`Restore psql failed (${code}): ${stderr}`));
-        });
-        gunzip.on('error', reject);
-        psql.on('error', reject);
-      });
-
-      try { await storage.createActivityLog({ userId: req.session.user.id, action: 'db_restore', success: true, details: { filename } }); } catch { }
-      res.json({ message: 'Restore successful' });
     } catch (error: any) {
       console.error('Restore error:', error);
       try { await storage.createActivityLog({ userId: req.session.user.id, action: 'db_restore', success: false, details: { error: error.message } }); } catch { }
