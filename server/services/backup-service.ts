@@ -15,6 +15,8 @@ const DIST_UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 const ROOT_UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 const SERVICE_ACCOUNT_PATH = path.join(KEYS_DIR, 'service-account.json');
+const OAUTH_CLIENT_PATH = path.join(KEYS_DIR, 'oauth-client.json');
+const USER_CREDENTIALS_PATH = path.join(KEYS_DIR, 'user-credentials.json');
 const CONFIG_PATH = path.join(KEYS_DIR, 'backup-config.json');
 
 export interface BackupConfig {
@@ -66,7 +68,9 @@ export class BackupService {
 
     public getConfig() {
         const hasKey = fs.existsSync(SERVICE_ACCOUNT_PATH);
-        return { ...this.config, hasServiceAccount: hasKey };
+        const hasOAuth = fs.existsSync(OAUTH_CLIENT_PATH);
+        const hasUserAuth = fs.existsSync(USER_CREDENTIALS_PATH);
+        return { ...this.config, hasServiceAccount: hasKey, hasOAuth, hasUserAuth };
     }
 
     public setupSchedule() {
@@ -104,9 +108,65 @@ export class BackupService {
         fs.writeFileSync(SERVICE_ACCOUNT_PATH, keyContent);
     }
 
+    public async saveOAuthClient(keyContent: string) {
+        JSON.parse(keyContent);
+        fs.writeFileSync(OAUTH_CLIENT_PATH, keyContent);
+    }
+
+    public getAuthUrl() {
+        if (!fs.existsSync(OAUTH_CLIENT_PATH)) throw new Error("OAuth Client file missing");
+        const keys = JSON.parse(fs.readFileSync(OAUTH_CLIENT_PATH, 'utf-8')).web;
+        const oauth2Client = new google.auth.OAuth2(
+            keys.client_id,
+            keys.client_secret,
+            keys.redirect_uris[0]
+        );
+
+        return oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: ['https://www.googleapis.com/auth/drive.file'],
+            prompt: 'consent' // Force refresh token
+        });
+    }
+
+    public async handleAuthCallback(code: string) {
+        if (!fs.existsSync(OAUTH_CLIENT_PATH)) throw new Error("OAuth Client file missing");
+        const keys = JSON.parse(fs.readFileSync(OAUTH_CLIENT_PATH, 'utf-8')).web;
+        const oauth2Client = new google.auth.OAuth2(
+            keys.client_id,
+            keys.client_secret,
+            keys.redirect_uris[0]
+        );
+
+        const { tokens } = await oauth2Client.getToken(code);
+        fs.writeFileSync(USER_CREDENTIALS_PATH, JSON.stringify(tokens));
+        return tokens;
+    }
+
     private getDriveClient() {
+        // 1. Prefer User Credentials (OAuth)
+        if (fs.existsSync(USER_CREDENTIALS_PATH) && fs.existsSync(OAUTH_CLIENT_PATH)) {
+            try {
+                const keys = JSON.parse(fs.readFileSync(OAUTH_CLIENT_PATH, 'utf-8')).web;
+                const tokens = JSON.parse(fs.readFileSync(USER_CREDENTIALS_PATH, 'utf-8'));
+
+                const oauth2Client = new google.auth.OAuth2(
+                    keys.client_id,
+                    keys.client_secret,
+                    keys.redirect_uris[0]
+                );
+                oauth2Client.setCredentials(tokens);
+
+                // Auto-refresh logic handled by googleapis if refresh_token is present
+                return google.drive({ version: 'v3', auth: oauth2Client });
+            } catch (e) {
+                console.error("Failed to load user credentials, falling back to service account", e);
+            }
+        }
+
+        // 2. Fallback to Service Account
         if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
-            throw new Error('Service account key not found');
+            throw new Error('No valid backup credentials found (Service Account or User OAuth)');
         }
 
         const auth = new google.auth.GoogleAuth({
@@ -201,8 +261,11 @@ export class BackupService {
             this.saveConfig({});
 
             // 7. Optional: Upload to Drive (Legacy/Cloud option)
-            // Only if service account exists AND user wants it (we can keep this logic)
-            if (fs.existsSync(SERVICE_ACCOUNT_PATH) && this.config.driveFolderId) {
+            // If EITHER valid credential exists
+            const hasServiceAccount = fs.existsSync(SERVICE_ACCOUNT_PATH);
+            const hasUserAuth = fs.existsSync(USER_CREDENTIALS_PATH);
+
+            if (hasServiceAccount || hasUserAuth) {
                 try {
                     await this.uploadToDrive(finalZipPath, zipFilename);
                     this.config.lastCloudBackup = new Date().toISOString();
@@ -273,19 +336,21 @@ export class BackupService {
 
         let folderId = this.config.driveFolderId;
 
-        // If no folder ID, try to find or create "HighwayCafe_Backups"
+        // If no folder ID, try to find or create "Heavys Backups" (matches guide)
         if (!folderId) {
             const folderRes = await drive.files.list({
-                q: "mimeType='application/vnd.google-apps.folder' and name='HighwayCafe_Backups' and trashed=false",
+                q: "mimeType='application/vnd.google-apps.folder' and name='Heavys Backups' and trashed=false",
                 fields: 'files(id, name)',
             });
 
             if (folderRes.data.files && folderRes.data.files.length > 0) {
                 folderId = folderRes.data.files[0].id!;
+                console.log(`Found existing backup folder: ${folderId}`);
             } else {
+                console.log('Creating new backup folder...');
                 const createRes = await drive.files.create({
                     requestBody: {
-                        name: 'HighwayCafe_Backups',
+                        name: 'Heavys Backups',
                         mimeType: 'application/vnd.google-apps.folder',
                     },
                     fields: 'id',

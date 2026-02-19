@@ -28,6 +28,7 @@ import { PurchaseOrderManagement } from '@/components/purchase-order-management'
 import { OrganizationSettings } from '@/components/organization-settings';
 import { Truck, ClipboardList } from "lucide-react";
 import { ReceiptSettingsDialog } from "@/components/receipt-settings-dialog";
+import { ManagerReports } from "@/components/manager-reports";
 
 interface Analytics {
   sales: { total: number; count: number };
@@ -429,6 +430,10 @@ export default function AdminDashboard() {
               <ShoppingCart className="h-4 w-4 mr-2" />
               Sales
             </TabsTrigger>
+            <TabsTrigger value="reports" className="flex-shrink-0">
+              <ClipboardList className="h-4 w-4 mr-2" />
+              Reports
+            </TabsTrigger>
             <TabsTrigger value="analytics" className="flex-shrink-0">
               <Settings className="h-4 w-4 mr-2" />
               Analytics
@@ -479,6 +484,9 @@ export default function AdminDashboard() {
             <EnhancedOrderManagement />
           </TabsContent>
 
+          <TabsContent value="reports" className="space-y-6">
+            {user && <ManagerReports currentUser={user as any} />}
+          </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

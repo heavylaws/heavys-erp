@@ -51,6 +51,7 @@ interface CurrentOrder {
   discount: number;
   total: number;
   originalOrderId?: string; // For tracking edited orders
+  clientName?: string; // Optional client name / note saved with the order
 }
 
 export default function CashierPOS() {
@@ -396,6 +397,7 @@ export default function CashierPOS() {
       tax: 0,
       discount: 0,
       total: 0,
+      clientName: '',
     };
     setActiveOrders(prev => [...prev, newOrder]);
     setCurrentOrderId(newOrderId);
@@ -528,6 +530,7 @@ export default function CashierPOS() {
       paymentMethod,
       status: 'preparing', // Changed from 'pending' to 'preparing' for immediate kitchen processing
       isDelivery: false,
+      ...(currentOrder.clientName?.trim() ? { customerName: currentOrder.clientName.trim() } : {}),
     };
 
     const items = currentOrder.items.map(item => ({
@@ -688,6 +691,7 @@ export default function CashierPOS() {
       total: currentOrder.total.toFixed(2),
       status: 'pending',
       isDelivery: false,
+      ...(currentOrder.clientName?.trim() ? { customerName: currentOrder.clientName.trim() } : {}),
     } as any;
 
     const items = currentOrder.items.map(item => ({
@@ -1556,6 +1560,21 @@ export default function CashierPOS() {
                           }}
                         />
                       </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-dashed border-gray-200">
+                        <Label htmlFor="client-name-input" className="text-sm text-gray-600 whitespace-nowrap">Client Name:</Label>
+                        <Input
+                          id="client-name-input"
+                          type="text"
+                          className="h-8 flex-1"
+                          value={currentOrder.clientName || ''}
+                          placeholder="Optional (e.g. John)"
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            updateCurrentOrder(order => ({ ...order, clientName: name }));
+                          }}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-3 payment-section">
@@ -1637,7 +1656,7 @@ export default function CashierPOS() {
                               const previewOrder = {
                                 id: currentOrder.id,
                                 orderNumber: `PREVIEW-${Date.now()}`,
-                                customerName: 'Walk-in Customer',
+                                customerName: currentOrder.clientName?.trim() || 'Walk-in Customer',
                                 customerPhone: '',
                                 isDelivery: false,
                                 deliveryAddress: '',

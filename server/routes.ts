@@ -789,6 +789,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // OAuth Client Upload
+  app.post('/api/admin/backup/upload-oauth-client', isAuthenticated, isAdmin, upload.single('key'), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+      const keyContent = req.file.buffer.toString('utf-8');
+      await backupService.saveOAuthClient(keyContent);
+      res.json({ message: 'OAuth client saved successfully', config: backupService.getConfig() });
+    } catch (e: any) {
+      console.error('FAQs key upload error:', e);
+      res.status(400).json({ message: 'Invalid OAuth client file', error: e.message });
+    }
+  });
+
+  // OAuth Auth URL
+  app.get('/api/admin/backup/auth-url', isAuthenticated, isAdmin, (req, res) => {
+    try {
+      const url = backupService.getAuthUrl();
+      res.json({ url });
+    } catch (e: any) {
+      res.status(400).json({ message: 'Failed to generate Auth URL. Ensure OAuth Client is uploaded.', error: e.message });
+    }
+  });
+
+  // OAuth Callback
+  app.get('/api/admin/backup/callback', async (req, res) => {
+    try {
+      const { code } = req.query;
+      if (!code) return res.status(400).send('No code provided');
+
+      await backupService.handleAuthCallback(code as string);
+
+      // Redirect back to admin page with success
+      res.redirect('/admin/backups?status=oauth_success');
+    } catch (e: any) {
+      console.error('OAuth Callback Error:', e);
+      res.status(500).send(`Authentication failed: ${e.message}`);
+    }
+  });
+
   app.post('/api/admin/backup/test-drive', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const status = await backupService.testConnection();

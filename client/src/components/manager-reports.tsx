@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart, Calendar, Clock, DollarSign, TrendingUp, Users, Download, Filter, Search } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 import type { User } from "@shared/schema";
 import { ShiftReportDialog } from "./shift-report-dialog";
@@ -204,6 +205,7 @@ export function ManagerReports({ currentUser }: ManagerReportsProps) {
           <TabsTrigger value="custom" data-testid="tab-custom">Custom Report</TabsTrigger>
           <TabsTrigger value="performance" data-testid="tab-performance">Performance</TabsTrigger>
           <TabsTrigger value="analytics" data-testid="tab-analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="pnl" data-testid="tab-pnl">Profit & Loss</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -804,7 +806,113 @@ export function ManagerReports({ currentUser }: ManagerReportsProps) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="pnl" className="space-y-6">
+          <ProfitLossSection />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function ProfitLossSection() {
+  const [dateRange, setDateRange] = useState("30"); // days
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - parseInt(dateRange));
+  startDate.setHours(0, 0, 0, 0);
+
+  const { data: pnlData, isLoading, error } = useQuery({
+    queryKey: ['/api/reports/strategic/pnl', startDate.toISOString()],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/strategic/pnl?startDate=${startDate.toISOString()}`);
+      if (!res.ok) {
+        throw new Error('Network response was not ok');
+      }
+      return res.json();
+    }
+  });
+
+  if (isLoading) return <div className="h-96 flex items-center justify-center">Calculating financials...</div>;
+  if (error) return <div className="h-96 flex items-center justify-center text-red-500">Error loading data.</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Profit & Loss Analysis</h3>
+          <p className="text-sm text-muted-foreground">Estimated revenue vs costs based on ingredient prices.</p>
+        </div>
+        <Select value={dateRange} onValueChange={setDateRange}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select period" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Last 7 Days</SelectItem>
+            <SelectItem value="30">Last 30 Days</SelectItem>
+            <SelectItem value="90">Last 90 Days</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Total Revenue</div>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(pnlData?.reduce((sum: number, d: any) => sum + d.revenue, 0) || 0)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Est. Cost of Goods</div>
+            <div className="text-2xl font-bold text-red-600">
+              {formatCurrency(pnlData?.reduce((sum: number, d: any) => sum + d.cost, 0) || 0)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-sm font-medium text-muted-foreground">Net Profit</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {formatCurrency(pnlData?.reduce((sum: number, d: any) => sum + d.profit, 0) || 0)}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Revenue vs Cost Trend</CardTitle>
+          <CardDescription>Daily breakdown of financial performance.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={pnlData}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#82ca9d" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ff8042" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#ff8042" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend />
+                <Area type="monotone" dataKey="revenue" stroke="#82ca9d" fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
+                <Area type="monotone" dataKey="cost" stroke="#ff8042" fillOpacity={1} fill="url(#colorCost)" name="Cost (Est)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

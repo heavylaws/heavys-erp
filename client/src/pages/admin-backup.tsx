@@ -40,6 +40,8 @@ interface BackupConfig {
     hasServiceAccount: boolean;
     lastCloudBackup?: string;
     driveFolderId?: string;
+    hasOAuth?: boolean;
+    hasUserAuth?: boolean;
 }
 
 export function AdminBackupPage() {
@@ -410,16 +412,110 @@ export function AdminBackupPage() {
                     </Card>
                 </div>
 
-                {/* Right Column: Advanced / Legacy */}
+                {/* Right Column: Cloud Settings */}
                 <div className="space-y-6">
+                    {/* New: User Mode Sync */}
+                    <Card className="border-primary/20 bg-primary/5">
+                        <CardHeader>
+                            <div className="flex items-center gap-2 text-primary">
+                                <UploadCloud className="h-5 w-5" />
+                                <CardTitle className="text-base">Google Drive (User Mode)</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Connect your personal Drive to store backups (Free 15GB).
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">Status:</span>
+                                {config?.hasUserAuth ? (
+                                    <Badge className="bg-green-600 hover:bg-green-700 gap-1">
+                                        <Check className="h-3 w-3" /> Connected
+                                    </Badge>
+                                ) : config?.hasOAuth ? (
+                                    <Badge variant="secondary" className="text-amber-600 bg-amber-50">
+                                        Ready to Connect
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="outline">Setup Required</Badge>
+                                )}
+                            </div>
+
+                            {!config?.hasUserAuth && (
+                                <div className="space-y-3">
+                                    <div className="text-xs text-muted-foreground p-2 bg-background rounded border">
+                                        1. Create OAuth Credentials in Google Cloud Console.<br />
+                                        2. Download JSON and upload below.<br />
+                                        3. Click Connect.
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="oauth-upload" className="text-xs font-semibold">Step 1: Upload Client JSON</Label>
+                                        <Input
+                                            id="oauth-upload"
+                                            type="file"
+                                            accept=".json"
+                                            onChange={async (e) => {
+                                                if (!e.target.files?.length) return;
+                                                const file = e.target.files[0];
+                                                const formData = new FormData();
+                                                formData.append('key', file);
+
+                                                try {
+                                                    const res = await fetch('/api/admin/backup/upload-oauth-client', {
+                                                        method: 'POST',
+                                                        body: formData,
+                                                    });
+                                                    if (!res.ok) throw new Error((await res.json()).message);
+
+                                                    queryClient.invalidateQueries({ queryKey: ['/api/admin/backup/config'] });
+                                                    toast({ title: "OAuth Client Saved", description: "Now click Connect to login." });
+                                                } catch (error: any) {
+                                                    toast({ title: "Upload Failed", description: error.message, variant: "destructive" });
+                                                }
+                                            }}
+                                            className="h-9 text-xs mt-1"
+                                        />
+                                    </div>
+
+                                    <Button
+                                        onClick={async () => {
+                                            try {
+                                                const res = await fetch('/api/admin/backup/auth-url');
+                                                if (!res.ok) throw new Error((await res.json()).message);
+                                                const { url } = await res.json();
+                                                window.location.href = url;
+                                            } catch (error: any) {
+                                                toast({ title: "Connection Failed", description: error.message, variant: "destructive" });
+                                            }
+                                        }}
+                                        disabled={!config?.hasOAuth}
+                                        className="w-full gap-2"
+                                        size="sm"
+                                    >
+                                        <UploadCloud className="h-4 w-4" />
+                                        Step 2: Connect Google Drive
+                                    </Button>
+                                </div>
+                            )}
+
+                            {config?.hasUserAuth && (
+                                <div className="text-xs text-muted-foreground">
+                                    <p>Backups will be uploaded to "Heavys Backups" in your personal Drive.</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Legacy Service Account */}
                     <Card className="bg-muted/10 border-dashed">
                         <CardHeader>
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <Cloud className="h-4 w-4" />
-                                <CardTitle className="text-base">Legacy Cloud Sync</CardTitle>
+                                <CardTitle className="text-base">Legacy Bot Mode</CardTitle>
                             </div>
                             <CardDescription>
-                                Use Service Account (optional)
+                                Service Account (Requires Billing/Quota)
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -435,7 +531,7 @@ export function AdminBackupPage() {
                             </div>
 
                             <div>
-                                <Label htmlFor="key-upload" className="text-xs">Update Key (JSON)</Label>
+                                <Label htmlFor="key-upload" className="text-xs">Update Bot Key (JSON)</Label>
                                 <div className="flex gap-2 mt-1">
                                     <Input
                                         id="key-upload"
@@ -455,7 +551,7 @@ export function AdminBackupPage() {
                                 onClick={() => testConnectionMutation.mutate()}
                                 disabled={!config?.hasServiceAccount || testConnectionMutation.isPending}
                             >
-                                Test Connection
+                                Test Bot Connection
                             </Button>
                         </CardContent>
                     </Card>

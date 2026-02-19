@@ -160,3 +160,4 @@ backups/
 # Local files
 .local/
 .remote-hostkeys/service-account.json
+keys/service-account.json
