@@ -1785,25 +1785,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[PUT /api/orders/${id}] Received update request`);
       console.log('Order Data Payload:', JSON.stringify(orderData, null, 2));
 
-      // Update the order
-      const updatedOrder = await storage.updateOrder(id, orderData);
-
-      // If items are provided, update them too
+      let updatedOrder;
+      // If items are provided (meaning the order items are being edited), use the transaction method to adjust stock appropriately
       if (items && Array.isArray(items)) {
-        // Delete existing order items
-        await storage.deleteOrderItems(id);
-
-        // Create new order items
-        for (const item of items) {
-          await storage.createOrderItem({
-            orderId: id,
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total,
-            modifications: item.modifications
-          });
-        }
+        updatedOrder = await storage.updateOrderTransaction(id, orderData, items, user.id);
+      } else {
+        // Just update the order details with no items changed
+        updatedOrder = await storage.updateOrder(id, orderData);
       }
 
       // Broadcast order update via WebSocket
@@ -1842,7 +1830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Insufficient permissions to delete orders" });
       }
 
-      await storage.deleteOrder(id);
+      await storage.deleteOrder(id, user.id);
 
       // Broadcast order deletion to all connected clients
       broadcast({

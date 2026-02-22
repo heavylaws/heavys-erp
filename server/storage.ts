@@ -143,8 +143,9 @@ export interface IStorage {
   createOrder(order: InsertOrder): Promise<Order>;
   // Create an order along with its items and inventory impact in a single transaction
   createOrderTransaction(order: InsertOrder, items: InsertOrderItem[], userId: string): Promise<Order>;
+  updateOrderTransaction(orderId: string, orderData: Partial<InsertOrder>, items: InsertOrderItem[], userId: string): Promise<Order>;
   updateOrder(id: string, order: Partial<InsertOrder>): Promise<Order>;
-  deleteOrder(id: string): Promise<void>;
+  deleteOrder(id: string, userId?: string): Promise<void>;
   getOrderItems(orderId: string): Promise<OrderItem[]>;
   archiveReadyOrdersOlderThan(minutes: number): Promise<string[]>;
   createOrderItem(orderItem: InsertOrderItem): Promise<OrderItem>;
@@ -238,6 +239,79 @@ export interface IStorage {
   // Company Settings
   getCompanySettings(): Promise<CompanySettings | undefined>;
   updateCompanySettings(settings: InsertCompanySettings): Promise<CompanySettings>;
+}
+
+// --- Stock Management Helpers ---
+
+async function adjustStockForOrderItems(tx: any, items: any[], orderNumber: number, userId: string, actionReason: string, isRestore: boolean) {
+  const productComponentCache: Record<string, ProductComponent[]> = {};
+
+  for (const item of items) {
+    const [product] = await tx.select().from(products).where(eq(products.id, item.productId));
+    if (!product) throw new Error(`Product ${item.productId} not found`);
+
+    if (product.type === 'finished_good') {
+      const qtyChange = isRestore ? item.quantity : -item.quantity;
+      const updateSql = isRestore
+        ? sql`UPDATE ${products} SET stock_quantity = stock_quantity + ${item.quantity}::int, updated_at = now() WHERE id = ${item.productId} RETURNING stock_quantity`
+        : sql`UPDATE ${products} SET stock_quantity = stock_quantity - ${item.quantity}::int, updated_at = now() WHERE id = ${item.productId} AND stock_quantity >= ${item.quantity} RETURNING stock_quantity`;
+
+      const result: any = await tx.execute(updateSql);
+      if (!Array.isArray(result) || (result.length === 0)) {
+        throw new Error(`Insufficient stock for product ${product.name}`);
+      }
+
+      const newQty = result[0].stock_quantity;
+      await tx.insert(inventoryLog).values({
+        type: 'product',
+        itemId: product.id,
+        action: isRestore ? 'adjustment' : 'sale',
+        quantityChange: String(qtyChange),
+        previousQuantity: String(product.stockQuantity ?? 0),
+        newQuantity: String(newQty),
+        userId,
+        reason: actionReason,
+      });
+    } else {
+      // Component-based product
+      if (!productComponentCache[item.productId]) {
+        productComponentCache[item.productId] = await tx.select().from(productComponents).where(eq(productComponents.productId, item.productId));
+      }
+      const pcList = productComponentCache[item.productId] || [];
+      for (const pc of pcList) {
+        if (pc.isOptional && !((item as any).__selectedOptionalIngredientIds || []).includes(pc.id)) continue;
+        const perUnitQty = parseFloat(String(pc.quantity || '0'));
+        if (isNaN(perUnitQty) || perUnitQty <= 0) continue;
+        const totalQty = perUnitQty * item.quantity;
+        const qtyChange = isRestore ? totalQty : -totalQty;
+
+        const [componentRow] = await tx.select().from(components).where(eq(components.id, pc.componentId));
+        if (!componentRow) throw new Error(`Component ${pc.componentId} not found`);
+        const prevStock = Number(componentRow.stockQuantity);
+
+        const updateSql = isRestore
+          ? sql`UPDATE ${components} SET stock_quantity = (stock_quantity::numeric + ${String(totalQty)})::numeric, updated_at = now() WHERE id = ${pc.componentId} RETURNING stock_quantity`
+          : sql`UPDATE ${components} SET stock_quantity = (stock_quantity::numeric - ${String(totalQty)})::numeric, updated_at = now() WHERE id = ${pc.componentId} AND stock_quantity >= ${String(totalQty)}::numeric RETURNING stock_quantity`;
+
+        const result: any = await tx.execute(updateSql);
+        if (!Array.isArray(result) || result.length === 0) {
+          throw new Error(`Insufficient component stock for ${pc.componentId} used by product ${product.name}`);
+        }
+
+        const newQty = result[0].stock_quantity;
+        await tx.insert(inventoryLog).values({
+          type: 'component',
+          itemId: pc.componentId,
+          action: isRestore ? 'adjustment' : 'sale',
+          quantityChange: String(qtyChange),
+          previousQuantity: String(prevStock),
+          newQuantity: String(newQty),
+          userId,
+          reason: actionReason,
+        });
+      }
+    }
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -928,11 +1002,107 @@ export class DatabaseStorage implements IStorage {
     return updatedOrder;
   }
 
-  async deleteOrder(id: string): Promise<void> {
+  async updateOrderTransaction(orderId: string, orderData: Partial<InsertOrder>, items: InsertOrderItem[], userId: string): Promise<Order> {
+    return await db.transaction(async (tx: any) => {
+      const [existingOrder] = await tx.select().from(orders).where(eq(orders.id, orderId));
+      if (!existingOrder) throw new Error("Order not found");
+
+      // 1. Fetch old items and restore stock
+      const oldItems = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+      await adjustStockForOrderItems(tx, oldItems, existingOrder.orderNumber, userId, `Order Update (Restore Old) - Order #${existingOrder.orderNumber}`, true);
+
+      // 2. Delete old items and their options, if any options system exists we delete orderItemOptions
+      if (ENABLE_OPTIONS_SYSTEM) {
+        const itemIds = oldItems.map((i: any) => i.id);
+        if (itemIds.length > 0) {
+          await tx.delete(orderItemOptions).where(inArray(orderItemOptions.orderItemId, itemIds));
+        }
+      }
+      await tx.delete(orderItems).where(eq(orderItems.orderId, orderId));
+
+      // 3. Update main order
+      const updateData: any = {};
+      if (orderData.customerName !== undefined) updateData.customerName = orderData.customerName;
+      if (orderData.customerPhone !== undefined) updateData.customerPhone = orderData.customerPhone;
+      if (orderData.status !== undefined) updateData.status = orderData.status;
+      if (orderData.notes !== undefined) updateData.notes = orderData.notes;
+      if (orderData.subtotal !== undefined) updateData.subtotal = String(orderData.subtotal);
+      if (orderData.total !== undefined) updateData.total = String(orderData.total);
+      if (orderData.discountTotal !== undefined) updateData.discountTotal = String(orderData.discountTotal);
+
+      let updatedOrder = existingOrder;
+      if (Object.keys(updateData).length > 0) {
+        const [res] = await tx
+          .update(orders)
+          .set({ ...updateData, updatedAt: new Date() })
+          .where(eq(orders.id, orderId))
+          .returning();
+        updatedOrder = res;
+      }
+
+      // 4. Create new items and deduct stock
+      for (const item of items) {
+        const priceValue = (item as any).price || item.unitPrice || (item as any).__effectiveUnitPrice || '0';
+        const validPrice = typeof priceValue === 'string' ? priceValue : String(priceValue);
+
+        const [orderItem] = await tx.insert(orderItems).values({
+          orderId: updatedOrder.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: validPrice,
+          total: (Number(validPrice) * item.quantity).toFixed(2),
+          modifications: item.modifications,
+        }).returning();
+
+        if (ENABLE_OPTIONS_SYSTEM && (item as any).__resolvedOptionIds && (item as any).__resolvedOptionIds.length) {
+          for (const optId of (item as any).__resolvedOptionIds) {
+            await tx.insert(orderItemOptions).values({
+              orderItemId: orderItem.id,
+              optionId: String(optId),
+              priceAdjust: String('0')
+            });
+          }
+        }
+
+        // Transfer __selectedOptionalIngredientIds for stock deduction
+        if ((item as any).__selectedOptionalIngredientIds) {
+          orderItem.__selectedOptionalIngredientIds = (item as any).__selectedOptionalIngredientIds;
+        }
+      }
+
+      const newlyInsertedItems = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+
+      // Patch newlyInsertedItems with __selectedOptionalIngredientIds from input items to deduction works
+      for (const ni of newlyInsertedItems) {
+        const matchingInput = items.find((i: any) => i.productId === ni.productId && i.quantity === ni.quantity && i.modifications === ni.modifications);
+        if (matchingInput && (matchingInput as any).__selectedOptionalIngredientIds) {
+          (ni as any).__selectedOptionalIngredientIds = (matchingInput as any).__selectedOptionalIngredientIds;
+        }
+      }
+
+      await adjustStockForOrderItems(tx, newlyInsertedItems, updatedOrder.orderNumber, userId, `Order Update (Deduct New) - Order #${updatedOrder.orderNumber}`, false);
+
+      return updatedOrder;
+    });
+  }
+
+  async deleteOrder(id: string, userId?: string): Promise<void> {
     await db.transaction(async (tx: any) => {
-      // Delete order items first
+      const [order] = await tx.select().from(orders).where(eq(orders.id, id));
+      if (!order) return;
+
+      const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, id));
+
+      if (userId) {
+        await adjustStockForOrderItems(tx, items, order.orderNumber, userId, `Order Deleted - Order #${order.orderNumber}`, true);
+      }
+
+      if (ENABLE_OPTIONS_SYSTEM && items.length > 0) {
+        const itemIds = items.map((i: any) => i.id);
+        await tx.delete(orderItemOptions).where(inArray(orderItemOptions.orderItemId, itemIds));
+      }
+
       await tx.delete(orderItems).where(eq(orderItems.orderId, id));
-      // Then delete the order
       await tx.delete(orders).where(eq(orders.id, id));
     });
   }
