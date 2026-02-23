@@ -498,6 +498,24 @@ export default function CashierPOS() {
     });
   };
 
+  const setItemQuantity = (productId: string, quantity: number) => {
+    updateCurrentOrder(order => {
+      const newItems = order.items.map(item => {
+        if (item.productId === productId) {
+          const newQuantity = Math.max(0, quantity);
+          if (newQuantity === 0) {
+            return null; // Mark for removal
+          }
+          return { ...item, quantity: newQuantity, total: newQuantity * item.unitPrice };
+        }
+        return item;
+      }).filter(item => item !== null) as OrderItem[]; // Remove null items
+
+      const totals = calculateOrderTotals(newItems, order.discount);
+      return { ...order, items: newItems, ...totals };
+    });
+  };
+
   const updateItemPrice = (productId: string, newPrice: number) => {
     if (isNaN(newPrice) || newPrice < 0) return;
     updateCurrentOrder(order => {
@@ -1434,7 +1452,7 @@ export default function CashierPOS() {
                 <div className="flex-1 p-4 overflow-y-auto">
                   {/* Header Row */}
                   <div className="flex items-center text-xs font-semibold text-gray-500 mb-2 px-2">
-                    <div className="w-16 text-center">Qty</div>
+                    <div className="w-24 text-center">Qty</div>
                     <div className="flex-1 px-2">Item</div>
                     <div className="w-16 text-right">Unit</div>
                     <div className="w-32 text-right">Total</div>
@@ -1445,21 +1463,33 @@ export default function CashierPOS() {
                       <div key={item.productId} className="flex flex-col bg-gray-50 rounded-lg p-2 text-sm">
                         <div className="flex items-center justify-between">
                           {/* Qty Controls */}
-                          <div className="flex items-center w-16 justify-center space-x-1">
+                          <div className="flex items-center w-24 justify-center space-x-1">
                             <Button
                               size="sm"
                               variant="ghost"
                               onClick={() => updateItemQuantity(item.productId, -1)}
-                              className="h-6 w-6 p-0 hover:bg-gray-200"
+                              className="h-6 w-6 p-0 hover:bg-gray-200 shrink-0"
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="font-medium text-center w-4">{item.quantity}</span>
+                            <Input
+                              type="number"
+                              step="any"
+                              min="0"
+                              className="h-6 w-12 text-center p-0 text-sm font-medium border-none shadow-none focus-visible:ring-1"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val)) {
+                                  setItemQuantity(item.productId, val);
+                                }
+                              }}
+                            />
                             <Button
                               size="sm"
                               variant="ghost"
                               onClick={() => updateItemQuantity(item.productId, 1)}
-                              className="h-6 w-6 p-0 hover:bg-gray-200"
+                              className="h-6 w-6 p-0 hover:bg-gray-200 shrink-0"
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
