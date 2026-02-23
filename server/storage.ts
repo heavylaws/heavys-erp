@@ -1,4 +1,5 @@
 import {
+  customers,
   users,
   categories,
   products,
@@ -27,6 +28,8 @@ import {
   // Types
   type User,
   type UpsertUser,
+  type Customer,
+  type InsertCustomer,
   type Category,
   type InsertCategory,
   type Product,
@@ -867,6 +870,26 @@ export class DatabaseStorage implements IStorage {
 
   async createOrderTransaction(order: InsertOrder, items: InsertOrderItem[], userId: string): Promise<Order> {
     const createdOrder = await db.transaction(async (tx: any) => {
+      if (order.paymentMethod === 'debt' && order.customerName) {
+        const [existingCustomer] = await tx.select().from(customers).where(eq(customers.name, order.customerName));
+        const debtAmount = Number(order.total || 0);
+
+        if (existingCustomer) {
+          await tx.update(customers).set({
+            currentBalance: String(Number(existingCustomer.currentBalance || 0) + debtAmount),
+            updatedAt: new Date()
+          }).where(eq(customers.id, existingCustomer.id));
+          order.customerId = existingCustomer.id;
+        } else {
+          const [newCustomer] = await tx.insert(customers).values({
+            name: order.customerName,
+            type: 'retail',
+            currentBalance: String(debtAmount),
+          }).returning();
+          order.customerId = newCustomer.id;
+        }
+      }
+
       const [newOrder] = await tx.insert(orders).values(order).returning();
 
       // Build caches for product components and optional components to avoid repeated DB calls

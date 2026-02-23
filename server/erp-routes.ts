@@ -196,6 +196,31 @@ router.put("/customers/:id", requireAuth, async (req: any, res) => {
     }
 });
 
+router.post("/customers/:id/payment", requireAuth, requireManagerOrAdmin, async (req: any, res) => {
+    try {
+        const { amount } = req.body;
+        if (!amount || isNaN(Number(amount))) {
+            return res.status(400).json({ message: "Valid payment amount is required" });
+        }
+
+        const customer = await erpStorage.getCustomer(req.params.id);
+        if (!customer) {
+            return res.status(404).json({ message: "Customer not found" });
+        }
+
+        const newBalance = Math.max(0, Number(customer.currentBalance || 0) - Number(amount));
+
+        const updatedCustomer = await erpStorage.updateCustomer(req.params.id, {
+            currentBalance: String(newBalance)
+        });
+
+        res.json(updatedCustomer);
+    } catch (error) {
+        console.error("Error recording customer payment:", error);
+        res.status(500).json({ message: "Failed to record payment" });
+    }
+});
+
 router.delete("/customers/:id", requireAuth, requireManagerOrAdmin, async (req, res) => {
     try {
         await erpStorage.deleteCustomer(req.params.id);

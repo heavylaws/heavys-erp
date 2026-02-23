@@ -31,7 +31,7 @@ import { ReceiptSettingsDialog } from "@/components/receipt-settings-dialog";
 import { ReceiptSettings, type CompanySettings } from "@shared/schema";
 import { printReceipt as sendToPrinter } from "@/lib/printer-api";
 import { InvoiceTemplate, useInvoiceGenerator } from "@/components/invoice-template";
-import { FileText } from "lucide-react";
+import { FileText, CreditCard } from "lucide-react";
 
 interface OrderItem {
   id?: string;
@@ -533,6 +533,15 @@ export default function CashierPOS() {
   const processPayment = async (paymentMethod: string) => {
     const currentOrder = getCurrentOrder();
     if (!currentOrder || currentOrder.items.length === 0) return;
+
+    if (paymentMethod === 'debt' && (!currentOrder.clientName || !currentOrder.clientName.trim())) {
+      toast({
+        variant: "destructive",
+        title: "Client Name Required",
+        description: "Please enter a client name to process a debt order.",
+      });
+      return;
+    }
 
     // Check if order effectively requires technician attention
     // Check if order effectively requires technician attention
@@ -1647,22 +1656,30 @@ export default function CashierPOS() {
                         </div>
                       ) : (
                         // New order payment buttons
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <Button
                             onClick={() => processPayment('cash')}
                             className="py-4 bg-green-600 text-white hover:bg-green-700"
                             disabled={currentOrder.items.length === 0 || createOrderMutation.isPending}
                           >
-                            <DollarSign className="h-5 w-5 mr-2" />
-                            Cash
+                            <DollarSign className="h-5 w-5 mr-1 lg:mr-2" />
+                            <span className="hidden sm:inline">Cash</span>
+                          </Button>
+                          <Button
+                            onClick={() => processPayment('debt')}
+                            className="py-4 bg-orange-600 text-white hover:bg-orange-700"
+                            disabled={currentOrder.items.length === 0 || createOrderMutation.isPending}
+                          >
+                            <CreditCard className="h-5 w-5 mr-1 lg:mr-2" />
+                            <span className="hidden sm:inline">Debt</span>
                           </Button>
                           <Button
                             onClick={sendCurrentOrderToFulfillment}
-                            className="py-4"
+                            className="py-4 px-2"
                             disabled={currentOrder.items.length === 0 || createOrderMutation.isPending}
                           >
-                            <Send className="h-5 w-5 mr-2" />
-                            Send to Fulfillment
+                            <Send className="h-5 w-5 mr-1 lg:mr-2" />
+                            <span className="hidden sm:inline">Send</span>
                           </Button>
                         </div>
                       )}

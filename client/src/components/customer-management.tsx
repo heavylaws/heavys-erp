@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Trash2, Users, Plus, Search, X, Phone, Mail, Building, User } from "lucide-react";
+import { Edit, Trash2, Users, Plus, Search, X, Phone, Mail, Building, User, DollarSign } from "lucide-react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -219,6 +219,76 @@ function CustomerFormDialog({
                         </Button>
                         <Button type="submit" disabled={saving || !form.name}>
                             {saving ? "Saving..." : customer ? "Update" : "Create"}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function PaymentDialog({ customer, onSuccess }: { customer: Customer, onSuccess: () => void }) {
+    const [open, setOpen] = useState(false);
+    const [amount, setAmount] = useState(parseFloat(customer.currentBalance || "0").toFixed(2));
+    const [saving, setSaving] = useState(false);
+    const { toast } = useToast();
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+            const res = await apiRequest("POST", `/api/customers/${customer.id}/payment`, { amount: Number(amount) });
+            if (res.ok) {
+                toast({ title: "Success", description: "Payment recorded successfully." });
+                setOpen(false);
+                onSuccess();
+            } else {
+                throw new Error("Failed to record payment");
+            }
+        } catch (error: any) {
+            toast({ title: "Error", description: error.message, variant: "destructive" });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100">
+                    <DollarSign className="h-4 w-4 mr-1" />
+                    Settle Debt
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Record Payment for {customer.name}</DialogTitle>
+                    <DialogDescription>
+                        Current Outstanding Balance: <span className="font-bold text-orange-600">${parseFloat(customer.currentBalance || "0").toFixed(2)}</span>
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit}>
+                    <div className="py-4">
+                        <Label htmlFor="paymentAmount">Payment Amount</Label>
+                        <div className="relative mt-2">
+                            <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <Input
+                                id="paymentAmount"
+                                type="number"
+                                step="any"
+                                min="0.01"
+                                max={parseFloat(customer.currentBalance || "1000000").toFixed(2)}
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                className="pl-10 text-lg font-medium"
+                                required
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                        <Button type="submit" disabled={saving || !amount || parseFloat(amount) <= 0}>
+                            {saving ? "Processing..." : "Record Payment"}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -463,18 +533,18 @@ export function CustomerManagement() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        {customer.creditLimit ? (
-                                            <div>
-                                                <div className="font-medium">${parseFloat(customer.creditLimit).toFixed(2)}</div>
-                                                {customer.currentBalance && parseFloat(customer.currentBalance) > 0 && (
-                                                    <div className="text-xs text-orange-600">
-                                                        Balance: ${parseFloat(customer.currentBalance).toFixed(2)}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
+                                        <div className="space-y-1">
+                                            {customer.creditLimit && parseFloat(customer.creditLimit) > 0 && (
+                                                <div className="text-sm font-medium">Limit: ${parseFloat(customer.creditLimit).toFixed(2)}</div>
+                                            )}
+                                            {customer.currentBalance && parseFloat(customer.currentBalance) > 0 ? (
+                                                <div className="text-sm font-bold text-orange-600">
+                                                    Debt: ${parseFloat(customer.currentBalance).toFixed(2)}
+                                                </div>
+                                            ) : (
+                                                <div className="text-sm text-gray-500">No Debt</div>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell>
                                         <Badge className={customer.isActive ? "bg-green-600" : "bg-gray-400"}>
@@ -483,6 +553,12 @@ export function CustomerManagement() {
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end space-x-2">
+                                            {customer.currentBalance && parseFloat(customer.currentBalance) > 0 ? (
+                                                <PaymentDialog
+                                                    customer={customer}
+                                                    onSuccess={() => queryClient.invalidateQueries({ queryKey: ["/api/customers"] })}
+                                                />
+                                            ) : null}
                                             <CustomerFormDialog
                                                 customer={customer}
                                                 trigger={
