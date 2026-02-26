@@ -12,7 +12,12 @@ RUN apk add --no-cache \
     g++ \
     linux-headers \
     eudev-dev \
-    libusb-dev
+    libusb-dev \
+    cairo-dev \
+    pango-dev \
+    jpeg-dev \
+    giflib-dev \
+    pixman-dev
 
 ENV CACHE_BUST=2025-12-31-01
 

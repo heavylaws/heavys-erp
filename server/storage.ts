@@ -256,8 +256,8 @@ async function adjustStockForOrderItems(tx: any, items: any[], orderNumber: numb
     if (product.type === 'finished_good') {
       const qtyChange = isRestore ? item.quantity : -item.quantity;
       const updateSql = isRestore
-        ? sql`UPDATE ${products} SET stock_quantity = stock_quantity + ${item.quantity}::int, updated_at = now() WHERE id = ${item.productId} RETURNING stock_quantity`
-        : sql`UPDATE ${products} SET stock_quantity = stock_quantity - ${item.quantity}::int, updated_at = now() WHERE id = ${item.productId} AND stock_quantity >= ${item.quantity} RETURNING stock_quantity`;
+        ? sql`UPDATE ${products} SET stock_quantity = stock_quantity + ${item.quantity}::numeric, updated_at = now() WHERE id = ${item.productId} RETURNING stock_quantity`
+        : sql`UPDATE ${products} SET stock_quantity = stock_quantity - ${item.quantity}::numeric, updated_at = now() WHERE id = ${item.productId} AND stock_quantity >= ${item.quantity} RETURNING stock_quantity`;
 
       const result: any = await tx.execute(updateSql);
       if (!Array.isArray(result) || (result.length === 0)) {
@@ -916,7 +916,7 @@ export class DatabaseStorage implements IStorage {
         if (product.type === 'finished_good') {
           // Atomic update: decrement stock only if enough
           const needed = item.quantity;
-          const updateSql = sql`UPDATE ${products} SET stock_quantity = stock_quantity - ${needed}::int, updated_at = now() WHERE id = ${item.productId} AND stock_quantity >= ${needed} RETURNING stock_quantity`;
+          const updateSql = sql`UPDATE ${products} SET stock_quantity = stock_quantity - ${needed}::numeric, updated_at = now() WHERE id = ${item.productId} AND stock_quantity >= ${needed} RETURNING stock_quantity`;
           // @ts-ignore - use raw execute
           const result: any = await tx.execute(updateSql);
           if (!Array.isArray(result) || (result.length === 0)) {
